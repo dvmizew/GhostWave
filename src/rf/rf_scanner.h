@@ -1,7 +1,6 @@
 /**
  * @file rf_scanner.h
  * @brief Core 1 RF Scanner Task
- *
  */
 
 #ifndef GHOSTWAVE_RF_RF_SCANNER_H
@@ -9,22 +8,23 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include "types.h"
 
 struct RFScannerContext {
     SemaphoreHandle_t snapshotMutex;
     SpectrumSnapshot *sharedSnapshot;
-    volatile bool    *newDataFlag;
+    TaskHandle_t      notifyTaskHandle;
 };
 
 /**
  * @brief Initializes RF peripherals and spawns Core 1 scanner task.
  * @param snapshotMutex FreeRTOS mutex protecting shared snapshot
- * @param sharedSnapshot Pointer to shared snapshot double buffer
- * @param newDataFlag Pointer to fresh data flag
+ * @param sharedSnapshot Pointer to shared snapshot buffer
+ * @param notifyTaskHandle Task handle to notify on fresh telemetry
  * @return BaseType_t pdPASS if created successfully
  */
-BaseType_t rf_scanner_start(SemaphoreHandle_t snapshotMutex, SpectrumSnapshot *sharedSnapshot, volatile bool *newDataFlag);
+BaseType_t rf_scanner_start(SemaphoreHandle_t snapshotMutex, SpectrumSnapshot *sharedSnapshot, TaskHandle_t notifyTaskHandle);
 
 /**
  * @brief Core 1 task loop.

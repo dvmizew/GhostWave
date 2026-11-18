@@ -1,6 +1,6 @@
 /**
  * @file rf_scanner.cpp
- * @brief Core 1 RF Scanner
+ * @brief Core 1 RF Scanner Task
  */
 
 #include "rf/rf_scanner.h"
@@ -14,10 +14,10 @@
 static RFScannerContext s_rf_ctx;
 static TEA5767Driver    s_tea5767(Wire1);
 
-BaseType_t rf_scanner_start(SemaphoreHandle_t snapshotMutex, SpectrumSnapshot *sharedSnapshot, volatile bool *newDataFlag) {
+BaseType_t rf_scanner_start(SemaphoreHandle_t snapshotMutex, SpectrumSnapshot *sharedSnapshot, TaskHandle_t notifyTaskHandle) {
     s_rf_ctx.snapshotMutex = snapshotMutex;
     s_rf_ctx.sharedSnapshot = sharedSnapshot;
-    s_rf_ctx.newDataFlag = newDataFlag;
+    s_rf_ctx.notifyTaskHandle = notifyTaskHandle;
 
     s_tea5767.init();
     WifiSniffer::init();
@@ -44,28 +44,32 @@ void Task_RF_Scanner(void *param) {
         localSnapshot.seq = ++sequence;
         localSnapshot.timestampMs = sweepStartMs;
 
-        // 1. FAST FM BROADCAST SWEEP (87.5 - 108.0 MHz, 64 Bins on Wire1 GPIO 32/33)
+        // 1. FAST FM BROADCAST SWEEP (87.5 - 108.0 MHz)
         s_tea5767.sweep(localSnapshot.fmRssi);
 
         // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13)
-        WifiSniffer::sweepChannels(localSnapshot.wifiPkts, localSnapshot.wifiMaxRssi, WIFI_CHANNEL_DWELL_MS);
+        WifiSniffer::sweepChannels(localSnapshot.wifiPkts, localSnapshot.wifiMaxRssi,
+                                   localSnapshot.apList, localSnapshot.apCount,
+                                   WIFI_CHANNEL_DWELL_MS);
 
-        // delay between Wi-Fi and BLE on the shared 2.4 GHz RF transceiver
+        // delay a few milliseconds to allow the Wi-Fi and BLE stacks to process any remaining packets
         vTaskDelay(pdMS_TO_TICKS(5));
 
-        // 3. PASSIVE BLE SCAN WINDOW (NimBLE-Arduino)
-        BleScanner::scan(BLE_SCAN_WINDOW_MS, localSnapshot.bleDevices, localSnapshot.bleMaxRssi);
+        // 3. PASSIVE BLE SCAN WINDOW
+        BleScanner::scan(BLE_SCAN_WINDOW_MS, localSnapshot.bleDevices, localSnapshot.bleMaxRssi,
+                         localSnapshot.bleList, &localSnapshot.bleCount);
 
         localSnapshot.sweepDurationMs = static_cast<uint16_t>(millis() - sweepStartMs);
 
-        // 4. ATOMIC SNAPSHOT TRANSFER TO CORE 0
+        // 4. ATOMIC SNAPSHOT TRANSFER & CORE 0 NOTIFICATION
         if (ctx != nullptr && ctx->snapshotMutex != nullptr &&
             xSemaphoreTake(ctx->snapshotMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             memcpy(ctx->sharedSnapshot, &localSnapshot, sizeof(SpectrumSnapshot));
-            if (ctx->newDataFlag != nullptr) {
-                *(ctx->newDataFlag) = true;
-            }
             xSemaphoreGive(ctx->snapshotMutex);
+
+            if (ctx->notifyTaskHandle != nullptr) {
+                xTaskNotifyGive(ctx->notifyTaskHandle);
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(5));

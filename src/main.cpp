@@ -1,40 +1,52 @@
-/**
- * @file main.cpp
- * @brief GhostWave Single-Node RF Spectrum Analyzer & Congestion Monitor
- * Entry point: Hardware initialization & dual-core FreeRTOS task dispatch.
- */
-
 #include <Arduino.h>
-#include <Wire.h>
 #include "config.h"
 #include "types.h"
 #include "rf/rf_scanner.h"
-#include "ui/ui_manager.h"
+#include "telemetry/telemetry.h"
 
-// Synchronization primitives & double-buffer shared snapshot
 static SemaphoreHandle_t s_snapshot_mutex = nullptr;
 static SpectrumSnapshot  s_shared_snapshot = {};
-static volatile bool     s_new_data_available = false;
+static TaskHandle_t      s_telemetry_task_handle = nullptr;
+
+static void Task_Telemetry(void *param) {
+    (void)param;
+    static SpectrumSnapshot localSnapshot;
+
+    while (true) {
+        // Blocks indefinitely until Core 1 signals fresh telemetry
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        if (xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            memcpy(&localSnapshot, &s_shared_snapshot, sizeof(SpectrumSnapshot));
+            xSemaphoreGive(s_snapshot_mutex);
+
+            Telemetry::streamJson(Serial, localSnapshot);
+        }
+    }
+}
 
 void setup() {
-    pinMode(BTN_MODE_PIN, INPUT_PULLUP);
-
     Serial.begin(SERIAL_BAUD_RATE);
 
     s_snapshot_mutex = xSemaphoreCreateMutex();
 
-    // I2C0 for SSD1306 OLED
-    Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN, I2C_STANDARD_CLOCK);
+    Serial.println("{\"status\":\"GhostWave Headless Online\",\"baud\":921600}");
 
-    Serial.println("{\"status\":\"GhostWave Single-Node Online\",\"baud\":921600}");
+    // Core 0: Telemetry task waits on notification from Core 1
+    xTaskCreatePinnedToCore(
+        Task_Telemetry,
+        "GW_Telem",
+        TELEMETRY_TASK_STACK_SIZE,
+        nullptr,
+        TELEMETRY_TASK_PRIORITY,
+        &s_telemetry_task_handle,
+        TELEMETRY_TASK_CORE
+    );
 
-    // Spawn Core 1 RF Scanner (probes TEA5767 + Wi-Fi Promiscuous + NimBLE Scan)
-    rf_scanner_start(s_snapshot_mutex, &s_shared_snapshot, &s_new_data_available);
-
-    // Spawn Core 0 UI & Telemetry (U8g2 30 FPS OLED + Serial JSON Stream)
-    ui_manager_start(s_snapshot_mutex, &s_shared_snapshot, &s_new_data_available);
+    // Core 1: RF Scanner task performs sweeps and notifies Core 0
+    rf_scanner_start(s_snapshot_mutex, &s_shared_snapshot, s_telemetry_task_handle);
 }
 
 void loop() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(5000));
 }
