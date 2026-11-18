@@ -1,6 +1,6 @@
 /**
  * @file wifi_sniffer.cpp
- * @brief Promiscuous 802.11 Sniffer & Beacon Parser
+ * @brief Wi-Fi Promiscuous Sniffer
  */
 
 #include "rf/wifi_sniffer.h"

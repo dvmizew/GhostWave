@@ -108,7 +108,7 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         char cleanName[20] = {0};
         for (size_t s = 0; s < sizeof(cleanName) - 1 && ble.name[s] != '\0'; s++) {
             char c = ble.name[s];
-            cleanName[s] = (c == '"' || c == '\\') ? '.' : c;
+            cleanName[s] = (c >= 32 && c <= 126 && c != '"' && c != '\\') ? c : '.';
         }
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
             "%s{\"name\":\"%s\",\"addr\":\"%s\",\"rssi\":%d}",
