@@ -1,23 +1,19 @@
 /**
  * @file config.h
  * @brief Hardware Configuration & Constants
- *
- * Hardware pin definitions, bus timings, baud rates, and RF sweep constants.
  */
 
 #ifndef GHOSTWAVE_CONFIG_H
 #define GHOSTWAVE_CONFIG_H
 
-// ============================================================================
 // HARDWARE PIN DEFINITIONS
-// ============================================================================
 // TEA5767 FM Receiver (Hardware I2C1 - Wire1)
-#define TEA_SDA_PIN             32
-#define TEA_SCL_PIN             33
+#define TEA_SDA_PIN             27
+#define TEA_SCL_PIN             26
 
 // SERIAL & BUS TIMINGS
 #define SERIAL_BAUD_RATE        921600
-#define I2C_STANDARD_CLOCK      400000   // 400 kHz Fast-Mode for TEA5767 tuning
+#define I2C_STANDARD_CLOCK      100000   // 100 kHz Standard-Mode
 
 // Static buffer size for telemetry JSON framing
 #define TELEMETRY_BUFFER_SIZE   2048
@@ -27,7 +23,7 @@
 #define GHOSTWAVE_FM_FREQ_START 87.5f    // FM sweep start in MHz
 #define GHOSTWAVE_FM_FREQ_SPAN  20.5f    // 108.0 MHz - 87.5 MHz
 #define TEA5767_I2C_ADDR        0x60     // Philips TEA5767 7-bit I2C address
-#define TEA5767_SETTLE_DELAY_US 2500     // Settle delay after tuning (~2.5ms)
+#define TEA5767_SETTLE_DELAY_US 5000     // Settle delay after tuning (5ms PLL lock window)
 
 #define GHOSTWAVE_WIFI_CHANNELS 13       // 2.4 GHz 802.11 b/g/n channels 1 to 13
 #define WIFI_CHANNEL_DWELL_MS   25       // Sniffer dwell per channel (13 * 25ms = 325ms)

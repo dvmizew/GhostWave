@@ -1,6 +1,6 @@
 /**
  * @file rf_scanner.cpp
- * @brief Core 1 RF Scanner Task
+ * @brief Core 1 RF Scanner Task Implementation
  */
 
 #include "rf/rf_scanner.h"
@@ -44,18 +44,19 @@ void Task_RF_Scanner(void *param) {
         localSnapshot.seq = ++sequence;
         localSnapshot.timestampMs = sweepStartMs;
 
-        // 1. FAST FM BROADCAST SWEEP (87.5 - 108.0 MHz)
+        // 1. FAST FM BROADCAST SWEEP (87.5 - 108.0 MHz, 64 Bins on Wire1)
         s_tea5767.sweep(localSnapshot.fmRssi);
+        localSnapshot.teaError = s_tea5767.getLastError();
 
         // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13)
         WifiSniffer::sweepChannels(localSnapshot.wifiPkts, localSnapshot.wifiMaxRssi,
                                    localSnapshot.apList, localSnapshot.apCount,
                                    WIFI_CHANNEL_DWELL_MS);
 
-        // delay a few milliseconds to allow the Wi-Fi and BLE stacks to process any remaining packets
+        // Brief delay between Wi-Fi and BLE on the shared 2.4 GHz RF transceiver
         vTaskDelay(pdMS_TO_TICKS(5));
 
-        // 3. PASSIVE BLE SCAN WINDOW
+        // 3. PASSIVE BLE SCAN WINDOW (NimBLE-Arduino)
         BleScanner::scan(BLE_SCAN_WINDOW_MS, localSnapshot.bleDevices, localSnapshot.bleMaxRssi,
                          localSnapshot.bleList, &localSnapshot.bleCount);
 

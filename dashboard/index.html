@@ -132,6 +132,9 @@
             <span class="text-slate-500">(87.5 – 108.0 MHz, 64 Bins)</span>
           </div>
           <div class="flex items-center space-x-2">
+            <span id="fmI2cBadge" class="hidden text-rose-300 font-bold bg-rose-950 border border-rose-800 px-2 py-0.5 rounded text-[10px]">
+              I2C ERROR (No ACK)
+            </span>
             <span class="text-slate-400">PEAK:</span>
             <span id="fmPeakBadge" class="text-cyan-300 font-bold bg-[#141722] border border-[#232a3d] px-2 py-0.5 rounded">
               -- MHz [--]
@@ -716,6 +719,18 @@
 
         if (d.seq !== undefined) seqVal.innerText = `#${d.seq}`;
         if (d.sweep_ms !== undefined) sweepVal.innerText = `${d.sweep_ms} ms`;
+
+        if (d.tea_err !== undefined) {
+          const fmI2cBadge = document.getElementById('fmI2cBadge');
+          if (fmI2cBadge) {
+            if (d.tea_err !== 0) {
+              fmI2cBadge.classList.remove('hidden');
+              fmI2cBadge.innerText = `I2C NACK (Err ${d.tea_err})`;
+            } else {
+              fmI2cBadge.classList.add('hidden');
+            }
+          }
+        }
 
         // 1. Process FM Broadcast Telemetry
         if (Array.isArray(d.fm) && d.fm.length === BINS) {

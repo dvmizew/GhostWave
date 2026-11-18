@@ -1,10 +1,3 @@
-/**
- * @file types.h
- * @brief GhostWave Shared Telemetry Structures
- *
- * Shared data structures for FreeRTOS spectrum telemetry and RF asset data.
- */
-
 #ifndef GHOSTWAVE_TYPES_H
 #define GHOSTWAVE_TYPES_H
 
@@ -27,13 +20,11 @@ struct BleDeviceRecord {
     int8_t rssi;
 };
 
-/**
- * @brief Shared FreeRTOS Telemetry Structure transferred across cores.
- */
 struct SpectrumSnapshot {
-    uint32_t timestampMs;                                   // Uptime timestamp at end of sweep
-    uint16_t sweepDurationMs;                               // Elapsed duration of full sweep cycle
-    uint16_t seq;                                           // Monotonically increasing sweep sequence
+    uint32_t timestampMs;
+    uint16_t sweepDurationMs;
+    uint16_t seq;
+    uint8_t  teaError;                                      // 0 = OK, 2 = I2C NACK (no device), 5 = Read err
     uint8_t  fmRssi[GHOSTWAVE_FM_BINS];                     // 64 bins, ADC signal level 0 to 15
     uint16_t wifiPkts[GHOSTWAVE_WIFI_CHANNELS];             // Management & data packets per channel
     int8_t   wifiMaxRssi[GHOSTWAVE_WIFI_CHANNELS];          // Peak RSSI in dBm (-128 if no traffic)

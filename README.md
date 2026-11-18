@@ -14,8 +14,8 @@ Requires an ESP32-WROOM-32 development board and a TEA5767 FM tuner module.
 | :--- | :--- | :--- | :--- |
 | **VCC** | **3V3** or **5V** | Power | Use 5V if module has onboard 3.3V LDO |
 | **GND** | **GND** | Ground | Common ground |
-| **SDA** | **GPIO 32** | I2C1 Data (`Wire1`) | Bidirectional pin with pull-up |
-| **SCL** | **GPIO 33** | I2C1 Clock (`Wire1`) | Bidirectional pin with pull-up |
+| **SDA** | **GPIO 27** | I2C1 Data (`Wire1`) | Bidirectional pin with pull-up |
+| **SCL** | **GPIO 26** | I2C1 Clock (`Wire1`) | Bidirectional pin with pull-up |
 
 
 ---
@@ -95,4 +95,4 @@ Each sweep cycle (~550 ms) outputs a single-line JSON string followed by `\n`:
   sudo usermod -a -G dialout $USER
   ```
   Then log out and log back in.
-- **Flat FM Spectrum (All Zeros):** Check that SDA/SCL are wired to GPIO 32 and 33, and ensure an antenna or wire is plugged into the TEA5767 3.5mm jack.
+- **Flat FM Spectrum (All Zeros):** Check that SDA/SCL are wired to GPIO 27 and 26, and ensure an antenna or wire is plugged into the TEA5767 3.5mm jack.

@@ -1,13 +1,12 @@
 /**
  * @file telemetry.cpp
- * @brief Zero-Heap Static JSON Serializer
+ * @brief Static JSON Serializer
  */
 
 #include "telemetry/telemetry.h"
 #include <stdio.h>
 #include <string.h>
 
-// Static buffer for serial streaming
 static char s_json_buffer[TELEMETRY_BUFFER_SIZE];
 
 size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, size_t maxLen) {
@@ -16,9 +15,9 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
     }
 
     int offset = snprintf(outBuffer, maxLen,
-        "{\"node\":\"ghostwave\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"fm\":[",
+        "{\"node\":\"ghostwave\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"fm\":[",
         snapshot.seq, static_cast<unsigned long>(snapshot.timestampMs),
-        snapshot.sweepDurationMs, snapshot.bleDevices, snapshot.bleMaxRssi);
+        snapshot.sweepDurationMs, snapshot.teaError, snapshot.bleDevices, snapshot.bleMaxRssi);
 
     if (offset < 0 || static_cast<size_t>(offset) >= maxLen) {
         return 0;
@@ -81,7 +80,7 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         char cleanSsid[24] = {0};
         for (size_t s = 0; s < sizeof(cleanSsid) - 1 && ap.ssid[s] != '\0'; s++) {
             char c = ap.ssid[s];
-            cleanSsid[s] = (c == '"' || c == '\\') ? '.' : c;
+            cleanSsid[s] = (c >= 32 && c <= 126 && c != '"' && c != '\\') ? c : '.';
         }
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
             "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d}",
