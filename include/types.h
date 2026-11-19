@@ -8,6 +8,14 @@
 #define MAX_DISCOVERED_BLE      8
 #define MAX_DISCOVERED_STATIONS 8
 
+enum WifiAuthMode : uint8_t {
+    AUTH_OPEN = 0,
+    AUTH_WEP  = 1,
+    AUTH_WPA  = 2,
+    AUTH_WPA2 = 3,
+    AUTH_WPA3 = 4
+};
+
 enum SystemOpMode : uint8_t {
     OP_MODE_SWEEP      = 0,
     OP_MODE_TUNER      = 1,
@@ -33,8 +41,17 @@ struct FmStationRecord {
 };
 
 struct WifiApRecord {
-    char    ssid[24];
+    char    ssid[33];                                       // Up to 32 characters + null terminator (IEEE 802.11 standard)
     uint8_t bssid[6];
+    uint8_t channel;
+    int8_t  rssi;
+    uint8_t authMode;                                       // WifiAuthMode (0=Open, 1=WEP, 2=WPA, 3=WPA2, 4=WPA3)
+};
+
+struct WifiClientRecord {
+    char    probedSsid[33];                                 // Probed network SSID or connected AP hint (up to 32 chars)
+    uint8_t mac[6];
+    uint8_t bssid[6];                                       // AP BSSID if connected / communicating (or 0 if unassociated)
     uint8_t channel;
     int8_t  rssi;
 };
@@ -50,13 +67,18 @@ struct SpectrumSnapshot {
     uint16_t sweepDurationMs;
     uint16_t seq;
     uint8_t  teaError;                                      // 0 = OK, 2 = I2C NACK (no device), 5 = Read err
-    uint8_t  fmRssi[GHOSTWAVE_FM_BINS];                     // 64 bins, ADC signal level 0 to 15
+    uint8_t  fmRssi[GHOSTWAVE_FM_BINS];                     // 128 bins, ADC signal level 0 to 15
     uint16_t wifiPkts[GHOSTWAVE_WIFI_CHANNELS];             // Management & data packets per channel
     int8_t   wifiMaxRssi[GHOSTWAVE_WIFI_CHANNELS];          // Peak RSSI in dBm (-128 if no traffic)
+    int8_t   wifiNoiseFloor[GHOSTWAVE_WIFI_CHANNELS];       // Hardware RF noise floor in dBm per channel
+    uint16_t wifiDeauthPkts;                                // Deauth / disassoc frames detected in this sweep
+    uint8_t  wifiDeauthChannel;                             // Channel of detected deauth activity (0 if none)
     uint16_t bleDevices;                                    // Active advertising BLE devices observed
     int8_t   bleMaxRssi;                                    // Peak BLE RSSI observed in dBm (-128 if none)
     uint8_t  apCount;                                       // Number of beacon APs discovered in this sweep
-    WifiApRecord apList[MAX_DISCOVERED_APS];                // Discovered Wi-Fi networks (SSID, BSSID, Ch, RSSI)
+    WifiApRecord apList[MAX_DISCOVERED_APS];                // Discovered Wi-Fi networks (SSID, BSSID, Ch, RSSI, Auth)
+    uint8_t  clientCount;                                   // Number of client devices discovered in this sweep
+    WifiClientRecord clientList[MAX_DISCOVERED_CLIENTS];    // Discovered Wi-Fi clients (MAC, Probed SSID, Ch, RSSI)
     uint8_t  bleCount;                                      // Number of unique BLE devices discovered
     BleDeviceRecord bleList[MAX_DISCOVERED_BLE];            // Discovered BLE devices (Name, MAC, RSSI)
     uint8_t  stationCount;                                  // Number of active FM carriers detected
