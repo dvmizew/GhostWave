@@ -29,6 +29,10 @@ void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
 
     s_snapshot_mutex = xSemaphoreCreateMutex();
+    if (s_snapshot_mutex == nullptr) {
+        Serial.println("{\"error\":\"Failed to create snapshot mutex\"}");
+        return;
+    }
 
     Serial.println("{\"status\":\"GhostWave Headless Online\",\"baud\":921600}");
 

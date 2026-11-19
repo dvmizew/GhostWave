@@ -192,6 +192,13 @@ void TEA5767Driver::sweep(uint8_t *outRssi, FmStationRecord *outStations,
         float freq = GHOSTWAVE_FM_FREQ_START +
             (static_cast<float>(i) * (GHOSTWAVE_FM_FREQ_SPAN / static_cast<float>(GHOSTWAVE_FM_BINS - 1)));
         FmReading r = readReading(freq);
+        if (m_lastError != 0) {
+            memset(outRssi, 0, GHOSTWAVE_FM_BINS);
+            if (outStationCount != nullptr) {
+                *outStationCount = 0;
+            }
+            return;
+        }
         outRssi[i] = r.level;
         ifCounts[i] = r.ifCount;
         if (r.stereo) {

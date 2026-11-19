@@ -9,6 +9,17 @@
 
 static char s_json_buffer[TELEMETRY_BUFFER_SIZE];
 
+static const char *getAuthModeStr(uint8_t auth) {
+    switch (auth) {
+        case AUTH_WEP:  return "WEP";
+        case AUTH_WPA:  return "WPA";
+        case AUTH_WPA2: return "WPA2";
+        case AUTH_WPA3: return "WPA3";
+        case AUTH_OPEN:
+        default:        return "OPEN";
+    }
+}
+
 size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, size_t maxLen) {
     if (outBuffer == nullptr || maxLen < 64) {
         return 0;
@@ -56,7 +67,7 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
             offset += written;
         }
 
-        if (offset < static_cast<int>(maxLen) - 3) {
+        if (offset <= static_cast<int>(maxLen) - 4) {
             int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "]}\n");
             if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
                 offset += written;
@@ -67,9 +78,10 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
     }
 
     int offset = snprintf(outBuffer, maxLen,
-        "{\"node\":\"ghostwave\",\"mode\":\"sweep\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"fm\":[",
+        "{\"node\":\"ghostwave\",\"mode\":\"sweep\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"deauth_pkts\":%u,\"deauth_ch\":%u,\"fm\":[",
         snapshot.seq, static_cast<unsigned long>(snapshot.timestampMs),
-        snapshot.sweepDurationMs, snapshot.teaError, snapshot.bleDevices, snapshot.bleMaxRssi);
+        snapshot.sweepDurationMs, snapshot.teaError, snapshot.bleDevices, snapshot.bleMaxRssi,
+        snapshot.wifiDeauthPkts, snapshot.wifiDeauthChannel);
 
     if (offset < 0 || static_cast<size_t>(offset) >= maxLen) {
         return 0;
@@ -119,6 +131,23 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         offset += written;
     }
 
+    // 3b. Wi-Fi Hardware Noise Floor (13 channels)
+    if (offset < static_cast<int>(maxLen) - 120) {
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"wifi_noise\":[");
+        if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
+            offset += written;
+        }
+    }
+
+    for (int i = 0; i < GHOSTWAVE_WIFI_CHANNELS && offset < static_cast<int>(maxLen) - 100; i++) {
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
+                               (i == 0) ? "%d" : ",%d", snapshot.wifiNoiseFloor[i]);
+        if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
+            break;
+        }
+        offset += written;
+    }
+
     // 4. Discovered Wi-Fi APs
     if (offset < static_cast<int>(maxLen) - 80) {
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"aps\":[");
@@ -129,24 +158,51 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
 
     for (uint8_t i = 0; i < snapshot.apCount && i < MAX_DISCOVERED_APS && offset < static_cast<int>(maxLen) - 120; i++) {
         const WifiApRecord &ap = snapshot.apList[i];
-        char cleanSsid[24] = {0};
+        char cleanSsid[33] = {0};
         for (size_t s = 0; s < sizeof(cleanSsid) - 1 && ap.ssid[s] != '\0'; s++) {
             char c = ap.ssid[s];
             cleanSsid[s] = (c >= 32 && c <= 126 && c != '"' && c != '\\') ? c : '.';
         }
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d}",
+            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\"}",
             (i == 0) ? "" : ",",
             cleanSsid,
             ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
-            ap.channel, ap.rssi);
+            ap.channel, ap.rssi, getAuthModeStr(ap.authMode));
         if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
             break;
         }
         offset += written;
     }
 
-    // 5. Discovered BLE Devices
+    // 5. Discovered Wi-Fi Clients (Probe Requests & Active STAs)
+    if (offset < static_cast<int>(maxLen) - 80) {
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"clients\":[");
+        if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
+            offset += written;
+        }
+    }
+
+    for (uint8_t i = 0; i < snapshot.clientCount && i < MAX_DISCOVERED_CLIENTS && offset < static_cast<int>(maxLen) - 100; i++) {
+        const WifiClientRecord &cli = snapshot.clientList[i];
+        char cleanSsid[33] = {0};
+        for (size_t s = 0; s < sizeof(cleanSsid) - 1 && cli.probedSsid[s] != '\0'; s++) {
+            char c = cli.probedSsid[s];
+            cleanSsid[s] = (c >= 32 && c <= 126 && c != '"' && c != '\\') ? c : '.';
+        }
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
+            "%s{\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"ssid\":\"%s\"}",
+            (i == 0) ? "" : ",",
+            cli.mac[0], cli.mac[1], cli.mac[2], cli.mac[3], cli.mac[4], cli.mac[5],
+            cli.bssid[0], cli.bssid[1], cli.bssid[2], cli.bssid[3], cli.bssid[4], cli.bssid[5],
+            cli.channel, cli.rssi, cleanSsid);
+        if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
+            break;
+        }
+        offset += written;
+    }
+
+    // 6. Discovered BLE Devices
     if (offset < static_cast<int>(maxLen) - 60) {
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"bles\":[");
         if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
@@ -197,7 +253,7 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         offset += written;
     }
 
-    if (offset < static_cast<int>(maxLen) - 3) {
+    if (offset <= static_cast<int>(maxLen) - 4) {
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "]}\n");
         if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
             offset += written;

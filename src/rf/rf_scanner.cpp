@@ -19,6 +19,10 @@ static volatile float        s_req_tune_freq  = 0.0f;
 static volatile bool         s_tune_pending   = false;
 static volatile bool         s_seek_pending   = false;
 static volatile bool         s_seek_direction = true;
+static volatile bool         s_mute_pending   = false;
+static volatile bool         s_req_mute       = false;
+static volatile bool         s_mono_pending   = false;
+static volatile bool         s_req_mono       = false;
 
 void rf_scanner_set_mode(SystemOpMode mode) {
     s_current_mode = mode;
@@ -31,11 +35,13 @@ void rf_scanner_tune(float freqMHz) {
 }
 
 void rf_scanner_set_mute(bool mute) {
-    s_tea5767.setMute(mute);
+    s_req_mute = mute;
+    s_mute_pending = true;
 }
 
 void rf_scanner_set_mono(bool mono) {
-    s_tea5767.setMono(mono);
+    s_req_mono = mono;
+    s_mono_pending = true;
 }
 
 void rf_scanner_seek(bool seekUp) {
@@ -89,6 +95,16 @@ void Task_RF_Scanner(void *param) {
             float found = 0.0f;
             s_tea5767.seek(s_seek_direction, found);
             s_seek_pending = false;
+        }
+
+        if (s_mute_pending) {
+            s_tea5767.setMute(s_req_mute);
+            s_mute_pending = false;
+        }
+
+        if (s_mono_pending) {
+            s_tea5767.setMono(s_req_mono);
+            s_mono_pending = false;
         }
 
         if (s_current_mode == OP_MODE_TUNER) {
@@ -203,7 +219,10 @@ void Task_RF_Scanner(void *param) {
 
         // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13)
         WifiSniffer::sweepChannels(localSnapshot.wifiPkts, localSnapshot.wifiMaxRssi,
+                                   localSnapshot.wifiNoiseFloor,
                                    localSnapshot.apList, localSnapshot.apCount,
+                                   localSnapshot.clientList, localSnapshot.clientCount,
+                                   localSnapshot.wifiDeauthPkts, localSnapshot.wifiDeauthChannel,
                                    WIFI_CHANNEL_DWELL_MS);
 
         // Brief delay between Wi-Fi and BLE on the shared 2.4 GHz RF transceiver
