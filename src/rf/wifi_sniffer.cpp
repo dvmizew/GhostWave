@@ -61,7 +61,10 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                     if (pos + 2 + elen > len) break;
 
                     if (id == 0) { // SSID Element ID
-                        uint8_t copyLen = (elen < 23) ? elen : 23;
+                        uint8_t copyLen = elen;
+                        if (copyLen > 23) {
+                            copyLen = 23;
+                        }
                         for (uint8_t i = 0; i < copyLen; i++) {
                             char c = static_cast<char>(payload[pos + 2 + i]);
                             ssidBuf[i] = (c >= 32 && c <= 126) ? c : '?';

@@ -155,7 +155,7 @@ void Task_RF_Scanner(void *param) {
             for (uint8_t i = 0; i < localSnapshot.stationCount && bugCount < MAX_BUG_TARGETS; i++) {
                 const FmStationRecord &st = localSnapshot.stationList[i];
                 if (!st.stereo && st.level >= s_bug_sensitivity && st.level >= (noiseFloor + 3)) {
-                    uint8_t delta = (st.level > noiseFloor) ? (st.level - noiseFloor) : 0;
+                    uint8_t delta = static_cast<uint8_t>(st.level - noiseFloor);
                     localSnapshot.bugList[bugCount].freqMHz = st.freqMHz;
                     localSnapshot.bugList[bugCount].level = st.level;
                     localSnapshot.bugList[bugCount].deltaAboveNoise = delta;
