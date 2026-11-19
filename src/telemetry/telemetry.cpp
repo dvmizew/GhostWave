@@ -14,8 +14,60 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         return 0;
     }
 
+    if (snapshot.opMode == OP_MODE_TUNER) {
+        int written = snprintf(outBuffer, maxLen,
+            "{\"node\":\"ghostwave\",\"mode\":\"tuner\",\"seq\":%u,\"freq\":%.1f,\"lev\":%u,\"stereo\":%s,\"if_cnt\":%u,\"if_lock\":%s,\"mute\":%s,\"mono\":%s}\n",
+            snapshot.seq,
+            snapshot.tunerFreq,
+            snapshot.tunerLevel,
+            snapshot.tunerStereo ? "true" : "false",
+            snapshot.tunerIfCount,
+            snapshot.tunerIfLock ? "true" : "false",
+            snapshot.tunerMute ? "true" : "false",
+            snapshot.tunerMono ? "true" : "false");
+        return (written > 0 && static_cast<size_t>(written) < maxLen) ? static_cast<size_t>(written) : 0;
+    }
+
+    if (snapshot.opMode == OP_MODE_BUG_HUNTER) {
+        int offset = snprintf(outBuffer, maxLen,
+            "{\"node\":\"ghostwave\",\"mode\":\"bug_hunter\",\"seq\":%u,\"sweep_ms\":%u,\"noise\":%u,\"threat\":%u,\"targets\":[",
+            snapshot.seq,
+            snapshot.sweepDurationMs,
+            snapshot.bugNoiseFloor,
+            snapshot.bugThreatLevel);
+
+        if (offset < 0 || static_cast<size_t>(offset) >= maxLen) {
+            return 0;
+        }
+
+        for (uint8_t i = 0; i < snapshot.bugCount && i < MAX_BUG_TARGETS && offset < static_cast<int>(maxLen) - 80; i++) {
+            const BugTargetRecord &b = snapshot.bugList[i];
+            int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
+                "%s{\"freq\":%.1f,\"lev\":%u,\"delta\":%u,\"if_cnt\":%u,\"valid_if\":%s}",
+                (i == 0) ? "" : ",",
+                b.freqMHz,
+                b.level,
+                b.deltaAboveNoise,
+                b.ifCount,
+                b.validIf ? "true" : "false");
+            if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
+                break;
+            }
+            offset += written;
+        }
+
+        if (offset < static_cast<int>(maxLen) - 3) {
+            int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "]}\n");
+            if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
+                offset += written;
+            }
+        }
+
+        return (offset > 0 && static_cast<size_t>(offset) < maxLen) ? static_cast<size_t>(offset) : 0;
+    }
+
     int offset = snprintf(outBuffer, maxLen,
-        "{\"node\":\"ghostwave\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"fm\":[",
+        "{\"node\":\"ghostwave\",\"mode\":\"sweep\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"fm\":[",
         snapshot.seq, static_cast<unsigned long>(snapshot.timestampMs),
         snapshot.sweepDurationMs, snapshot.teaError, snapshot.bleDevices, snapshot.bleMaxRssi);
 
@@ -115,6 +167,30 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
             cleanName,
             ble.addr,
             ble.rssi);
+        if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
+            break;
+        }
+        offset += written;
+    }
+
+    // 6. Discovered Active FM Stations
+    if (offset < static_cast<int>(maxLen) - 60) {
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"stations\":[");
+        if (written > 0 && static_cast<size_t>(offset + written) < maxLen) {
+            offset += written;
+        }
+    }
+
+    for (uint8_t i = 0; i < snapshot.stationCount && i < MAX_DISCOVERED_STATIONS && offset < static_cast<int>(maxLen) - 80; i++) {
+        const FmStationRecord &st = snapshot.stationList[i];
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
+            "%s{\"freq\":%.1f,\"lev\":%u,\"stereo\":%s,\"if_cnt\":%u,\"if_lock\":%s}",
+            (i == 0) ? "" : ",",
+            st.freqMHz,
+            st.level,
+            st.stereo ? "true" : "false",
+            st.ifCount,
+            st.validIf ? "true" : "false");
         if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
             break;
         }

@@ -46,7 +46,6 @@
       color: #ffffff;
       border-color: #3b82f6;
     }
-    /* Scrollbars */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
@@ -65,36 +64,35 @@
 </head>
 <body class="min-h-screen flex flex-col p-3 text-sm">
 
-  <!-- TOP INSTRUMENT HEADER -->
+  <!-- Header -->
   <header class="panel rounded-lg px-4 py-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-    <!-- Brand & Connection Status -->
     <div class="flex items-center space-x-3">
       <div class="flex items-center space-x-2">
         <span class="w-2.5 h-2.5 rounded-full bg-slate-600 transition-colors duration-300" id="statusDot"></span>
         <span class="font-bold tracking-tight text-white mono text-xs">GHOSTWAVE</span>
-        <span class="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-1.5 py-0.2 rounded font-mono">v2.0</span>
+        <span class="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-1.5 py-0.2 rounded font-mono">2.0</span>
       </div>
       <span class="text-xs text-slate-600 font-mono">|</span>
       <span class="text-xs text-slate-400 mono font-medium" id="statusLabel">DISCONNECTED</span>
     </div>
 
-    <!-- TABS NAVIGATION -->
+    <!-- Navigation Tabs -->
     <nav class="flex items-center bg-[#0a0c12] p-1 rounded-md border border-[#1b1f2b] space-x-1">
       <button id="tabBtnRadio" class="tab-btn active px-3 py-1 rounded text-xs font-medium flex items-center gap-1.5 border border-transparent text-slate-300">
-        <span>📻 Radio (FM)</span>
+        <span>Radio (FM)</span>
         <span id="badgeRadioCount" class="text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-800 px-1.5 rounded-full">0</span>
       </button>
       <button id="tabBtnWifi" class="tab-btn px-3 py-1 rounded text-xs font-medium flex items-center gap-1.5 border border-transparent text-slate-400 hover:text-slate-200">
-        <span>📶 Wi-Fi (2.4 GHz)</span>
+        <span>Wi-Fi (2.4 GHz)</span>
         <span id="badgeWifiCount" class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 rounded-full">0</span>
       </button>
       <button id="tabBtnBle" class="tab-btn px-3 py-1 rounded text-xs font-medium flex items-center gap-1.5 border border-transparent text-slate-400 hover:text-slate-200">
-        <span>📡 Bluetooth LE</span>
+        <span>Bluetooth LE</span>
         <span id="badgeBleCount" class="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-1.5 rounded-full">0</span>
       </button>
     </nav>
 
-    <!-- METRICS & CONTROLS -->
+    <!-- Metrics & Serial Controls -->
     <div class="flex items-center space-x-4 mono text-xs">
       <div class="hidden sm:flex items-center space-x-3 text-slate-400">
         <div><span class="text-slate-500">SWEEP:</span> <span id="sweepVal" class="text-slate-200 font-semibold">-- ms</span></div>
@@ -108,7 +106,7 @@
           <option value="460800">460800 Baud</option>
           <option value="115200">115200 Baud</option>
         </select>
-        <button id="connectBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-3.5 py-1 rounded text-xs transition flex items-center gap-1 shadow-md shadow-cyan-900/20">
+        <button id="connectBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-3.5 py-1 rounded text-xs transition flex items-center gap-1">
           <span>Connect</span>
         </button>
         <button id="disconnectBtn" disabled class="bg-[#141720] text-slate-500 border border-[#232938] px-2.5 py-1 rounded text-xs transition disabled:opacity-40">
@@ -118,18 +116,16 @@
     </div>
   </header>
 
-  <!-- ========================================================================= -->
-  <!-- TAB 1: RADIO (FM BROADCAST) -->
-  <!-- ========================================================================= -->
+  <!-- Tab 1: Radio (FM) -->
   <main id="tabContentRadio" class="flex-1 flex flex-col gap-3">
-    <!-- Top Row: Spectrum Trace & Waterfall -->
+    <!-- Spectrum Trace & Waterfall -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-      <!-- Left: Spectrum Chart (7 Cols) -->
+      <!-- Spectrum Chart (7 cols) -->
       <section class="lg:col-span-7 panel rounded-lg p-3 flex flex-col">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
           <div class="flex items-center space-x-2">
             <span class="text-white font-semibold">FM SPECTRUM ANALYZER</span>
-            <span class="text-slate-500">(87.5 – 108.0 MHz, 64 Bins)</span>
+            <span class="text-slate-500">(76.0 – 108.0 MHz, 128 Bins)</span>
           </div>
           <div class="flex items-center space-x-2">
             <span id="fmI2cBadge" class="hidden text-rose-300 font-bold bg-rose-950 border border-rose-800 px-2 py-0.5 rounded text-[10px]">
@@ -146,7 +142,7 @@
         </div>
       </section>
 
-      <!-- Right: Waterfall Spectrogram (5 Cols) -->
+      <!-- Waterfall Spectrogram (5 cols) -->
       <section class="lg:col-span-5 panel rounded-lg p-3 flex flex-col justify-between">
         <div>
           <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
@@ -164,26 +160,165 @@
             <canvas id="waterfallCanvas" height="180" class="waterfall-canvas w-full block"></canvas>
           </div>
           <div class="flex justify-between text-[10px] mono text-slate-500 mt-1 px-1">
-            <span>87.5 MHz</span>
-            <span>92.6 MHz</span>
-            <span>97.8 MHz</span>
-            <span>102.9 MHz</span>
+            <span>76.0 MHz</span>
+            <span>84.0 MHz</span>
+            <span>92.0 MHz</span>
+            <span>100.0 MHz</span>
             <span>108.0 MHz</span>
           </div>
         </div>
         <div class="mt-2 text-[11px] mono text-slate-400 bg-[#0b0d13] p-2 rounded border border-[#1a1e29] flex justify-between items-center">
-          <div><span class="text-slate-500">Tuner:</span> Philips TEA5767 (I2C1 Wire1)</div>
-          <div><span class="text-slate-500">Scan Window:</span> 64 steps @ 2.5ms settle</div>
+          <div><span class="text-slate-500">Tuner:</span> Philips TEA5767 (Wire1)</div>
+          <div><span class="text-slate-500">Step:</span> 250 kHz (2.0 ms settle)</div>
         </div>
       </section>
     </div>
 
-    <!-- Bottom Row: Detected Radio Stations Table -->
+    <!-- Mode Selector & Tuner / Bug Hunter Controls -->
+    <section class="panel rounded-lg p-3 flex flex-col bg-[#0e111a] border border-[#1e2333]">
+      <div class="flex flex-wrap items-center justify-between pb-2 mb-3 border-b border-[#1b1f2b] text-xs mono gap-2">
+        <div class="flex items-center space-x-3">
+          <span class="text-white font-semibold flex items-center space-x-1.5">
+            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+            <span>FM RECEIVER / TUNER</span>
+          </span>
+          <span class="text-slate-500 text-[11px]">(Output: 3.5mm Audio Jack)</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="modeSweepBtn" class="px-3 py-1 rounded text-xs font-semibold bg-cyan-600 text-white border border-cyan-500 transition">
+            SPECTRUM SWEEP
+          </button>
+          <button id="modeTunerBtn" class="px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-slate-400 border border-[#232938] hover:text-white transition">
+            LIVE TUNER
+          </button>
+          <button id="modeBugBtn" class="px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-amber-400 border border-[#3d2f14] hover:bg-[#261e0e] transition">
+            RF BUG HUNTER
+          </button>
+        </div>
+      </div>
+
+      <!-- Section A: Standard FM Tuner Controls -->
+      <div id="tunerControlsSection" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+        <!-- Frequency Dial / Display (4 cols) -->
+        <div class="md:col-span-4 bg-[#0a0c12] p-3 rounded-lg border border-[#181c28] flex flex-col items-center justify-center text-center">
+          <div class="text-[11px] text-slate-500 mono mb-1">TUNED FREQUENCY</div>
+          <div class="flex items-baseline space-x-2">
+            <span id="tunerDisplayFreq" class="text-3xl font-extrabold text-cyan-400 mono">76.0</span>
+            <span class="text-sm font-semibold text-slate-400 mono">MHz</span>
+          </div>
+          <div class="mt-2 flex items-center space-x-1.5">
+            <input id="tunerDirectInput" type="number" step="0.1" min="76.0" max="108.0" placeholder="e.g. 98.3" class="w-20 bg-[#141722] text-center text-cyan-300 border border-[#232a3d] rounded px-1.5 py-0.5 text-xs mono outline-none focus:border-cyan-500">
+            <button id="tunerTuneBtn" class="px-2 py-0.5 bg-cyan-900 hover:bg-cyan-800 text-cyan-200 border border-cyan-700 rounded text-xs mono font-semibold">
+              Tune
+            </button>
+          </div>
+        </div>
+
+        <!-- Slider & Step Controls (5 cols) -->
+        <div class="md:col-span-5 flex flex-col justify-center space-y-2">
+          <div class="flex justify-between text-[11px] mono text-slate-400">
+            <span>76.0 MHz</span>
+            <span id="tunerSliderVal" class="text-cyan-400 font-semibold">76.0 MHz</span>
+            <span>108.0 MHz</span>
+          </div>
+          <input id="tunerSlider" type="range" min="76.0" max="108.0" step="0.1" value="76.0" class="w-full accent-cyan-400 cursor-pointer">
+          <div class="flex justify-between items-center gap-1 text-xs mono">
+            <button id="btnStepDown10" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center">-1.0</button>
+            <button id="btnStepDown01" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center">-0.1</button>
+            <button id="btnSeekDown" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-cyan-300 border border-cyan-900 rounded text-center">◀ Seek</button>
+            <button id="btnSeekUp" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-cyan-300 border border-cyan-900 rounded text-center">Seek ▶</button>
+            <button id="btnStepUp01" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center">+0.1</button>
+            <button id="btnStepUp10" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center">+1.0</button>
+          </div>
+        </div>
+
+        <!-- Hardware Status & Audio Toggles (3 cols) -->
+        <div class="md:col-span-3 bg-[#0a0c12] p-3 rounded-lg border border-[#181c28] flex flex-col justify-between space-y-2 text-xs mono">
+          <div>
+            <div class="flex justify-between items-center text-[11px] text-slate-400 mb-1">
+              <span>SIGNAL LEVEL:</span>
+              <span id="tunerSignalTxt" class="text-cyan-400 font-semibold">0/15</span>
+            </div>
+            <div class="w-full bg-[#1b202e] h-2 rounded overflow-hidden">
+              <div id="tunerSignalBar" class="bg-cyan-400 h-full transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+            <span id="tunerStereoBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-500 border border-slate-700">
+              MONO
+            </span>
+            <span id="tunerIfBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-500 border border-slate-700">
+              IF: --
+            </span>
+          </div>
+          <div class="flex items-center space-x-1.5 pt-1 border-t border-[#181c28]">
+            <button id="tunerMuteBtn" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center text-[11px]">
+              MUTE
+            </button>
+            <button id="tunerMonoBtn" class="flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center text-[11px]">
+              FORCE MONO
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section B: RF Bug Hunter Panel -->
+      <div id="bugHunterSection" class="hidden flex flex-col space-y-3 pt-2">
+        <div class="flex flex-wrap items-center justify-between bg-[#150d17] p-2.5 rounded-lg border border-[#3b172a] text-xs mono gap-2">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span class="text-amber-300 font-bold">RF BUG HUNTER (NEAR-FIELD DETECTOR)</span>
+          </div>
+          <div class="flex items-center space-x-3 text-[11px]">
+            <span class="text-slate-400">Sensitivity:</span>
+            <input id="bugSensSlider" type="range" min="4" max="13" value="7" class="w-24 accent-amber-500 cursor-pointer">
+            <span id="bugSensVal" class="text-amber-400 font-bold">Lev &ge; 7</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          <!-- Threat Level (4 cols) -->
+          <div class="md:col-span-4 bg-[#0a0c12] p-3 rounded-lg border border-[#26121d] flex flex-col items-center justify-center text-center">
+            <div class="text-[10px] text-slate-500 tracking-wider mono mb-1.5">THREAT LEVEL</div>
+            <div id="threatBadge" class="px-3 py-1.5 rounded text-xs font-bold mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+              CLEAR (No Anomalies)
+            </div>
+            <div class="text-[11px] text-slate-400 mt-2 mono">
+              RF Noise Floor: <span id="bugNoiseVal" class="text-amber-300 font-bold">--</span> / 15
+            </div>
+          </div>
+
+          <!-- Discovered Targets Table (8 cols) -->
+          <div class="md:col-span-8 overflow-x-auto bg-[#0a070c] p-2 rounded-lg border border-[#26121d]">
+            <table class="w-full text-left text-xs mono border-collapse">
+              <thead>
+                <tr class="text-slate-400 border-b border-[#2b1422] text-[11px]">
+                  <th class="py-1 px-2 font-semibold">TARGET FREQ</th>
+                  <th class="py-1 px-2 font-semibold">SIGNAL (DELTA)</th>
+                  <th class="py-1 px-2 font-semibold">IF CARRIER</th>
+                  <th class="py-1 px-2 font-semibold">SIGNATURE</th>
+                  <th class="py-1 px-2 font-semibold text-center">ACTION</th>
+                </tr>
+              </thead>
+              <tbody id="bugTableBody" class="divide-y divide-[#1e0f18]">
+                <tr>
+                  <td colspan="5" class="py-4 text-center text-slate-500 text-[11px]">
+                    No near-field transmitters detected.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Detected FM Stations Table -->
     <section class="panel rounded-lg p-3 flex-1 flex flex-col">
       <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
         <div class="flex items-center space-x-2">
-          <span class="text-white font-semibold">DETECTED FM BROADCAST STATIONS</span>
-          <span class="text-slate-500 text-[11px]" id="radioTableSubtitle">(Auto-detected RF carrier peaks)</span>
+          <span class="text-white font-semibold">DETECTED FM STATIONS</span>
+          <span class="text-slate-500 text-[11px]" id="radioTableSubtitle">(Carrier Peaks)</span>
         </div>
         <div class="flex items-center space-x-2">
           <button id="clearRadioBtn" class="text-xs text-slate-400 hover:text-slate-200 px-2 py-0.5 rounded bg-[#141720] border border-[#232938]">
@@ -197,18 +332,20 @@
           <thead>
             <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
               <th class="py-2 px-3 font-semibold">FREQUENCY</th>
-              <th class="py-2 px-3 font-semibold">CARRIER STRENGTH</th>
-              <th class="py-2 px-3 font-semibold">SIGNAL (EST.)</th>
+              <th class="py-2 px-3 font-semibold">CARRIER LEVEL</th>
+              <th class="py-2 px-3 font-semibold">EST. SIGNAL</th>
               <th class="py-2 px-3 font-semibold">QUALITY</th>
-              <th class="py-2 px-3 font-semibold">AUDIO MODE</th>
+              <th class="py-2 px-3 font-semibold">AUDIO</th>
+              <th class="py-2 px-3 font-semibold">IF COUNTER</th>
               <th class="py-2 px-3 font-semibold">STATUS</th>
               <th class="py-2 px-3 font-semibold">LAST DETECTED</th>
+              <th class="py-2 px-3 font-semibold text-center">ACTION</th>
             </tr>
           </thead>
           <tbody id="radioTableBody" class="divide-y divide-[#161a24]">
             <tr>
-              <td colspan="7" class="py-8 text-center text-slate-500">
-                // No active FM carriers detected yet. Connect serial stream to start scanning.
+              <td colspan="9" class="py-8 text-center text-slate-500">
+                No FM carriers detected. Connect serial to start.
               </td>
             </tr>
           </tbody>
@@ -217,17 +354,15 @@
     </section>
   </main>
 
-  <!-- ========================================================================= -->
-  <!-- TAB 2: WI-FI (2.4 GHz CONGESTION & ACCESS POINTS) -->
-  <!-- ========================================================================= -->
+  <!-- Tab 2: Wi-Fi (2.4 GHz) -->
   <main id="tabContentWifi" class="flex-1 flex flex-col gap-3 hidden">
-    <!-- Top Row: Wi-Fi Channel Histogram & Metrics Cards -->
+    <!-- Channel Histogram & Congestion -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-      <!-- Left: Channel Histogram (8 cols) -->
+      <!-- Channel Histogram (8 cols) -->
       <section class="lg:col-span-8 panel rounded-lg p-3 flex flex-col">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
           <div class="flex items-center space-x-2">
-            <span class="text-white font-semibold">2.4 GHz WI-FI CHANNEL DENSITY</span>
+            <span class="text-white font-semibold">WI-FI CHANNEL DENSITY (2.4 GHz)</span>
             <span class="text-slate-500">(Channels 1 to 13, 802.11 b/g/n)</span>
           </div>
           <span class="text-emerald-400 text-[11px]">Dwell: 25ms / channel</span>
@@ -243,7 +378,7 @@
         </div>
       </section>
 
-      <!-- Right: Channel Congestion Analytics (4 cols) -->
+      <!-- Channel Congestion Summary (4 cols) -->
       <section class="lg:col-span-4 panel rounded-lg p-3 flex flex-col justify-between">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
           <span class="text-white font-semibold">CONGESTION SUMMARY</span>
@@ -274,11 +409,11 @@
       </section>
     </div>
 
-    <!-- Bottom Row: Discovered Wi-Fi Networks Table -->
+    <!-- Discovered Wi-Fi Access Points Table -->
     <section class="panel rounded-lg p-3 flex-1 flex flex-col">
       <div class="flex flex-wrap items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono gap-2">
         <div class="flex items-center space-x-2">
-          <span class="text-white font-semibold">DISCOVERED WI-FI NETWORKS (ACCESS POINTS)</span>
+          <span class="text-white font-semibold">DISCOVERED ACCESS POINTS</span>
           <span class="text-slate-500 text-[11px]" id="wifiTableCount">0 networks active</span>
         </div>
         <div class="flex items-center space-x-2">
@@ -293,20 +428,20 @@
         <table class="w-full text-left text-xs mono border-collapse">
           <thead>
             <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
-              <th class="py-2 px-3 font-semibold">SSID (NETWORK NAME)</th>
-              <th class="py-2 px-3 font-semibold">BSSID (MAC ADDRESS)</th>
+              <th class="py-2 px-3 font-semibold">SSID</th>
+              <th class="py-2 px-3 font-semibold">BSSID (MAC)</th>
               <th class="py-2 px-3 font-semibold">CHANNEL</th>
               <th class="py-2 px-3 font-semibold">FREQ</th>
-              <th class="py-2 px-3 font-semibold">RSSI (dBm)</th>
-              <th class="py-2 px-3 font-semibold">SIGNAL QUALITY</th>
-              <th class="py-2 px-3 font-semibold">SEEN COUNT</th>
-              <th class="py-2 px-3 font-semibold">LAST HEARD</th>
+              <th class="py-2 px-3 font-semibold">RSSI</th>
+              <th class="py-2 px-3 font-semibold">SIGNAL</th>
+              <th class="py-2 px-3 font-semibold">SEEN</th>
+              <th class="py-2 px-3 font-semibold">LAST SEEN</th>
             </tr>
           </thead>
           <tbody id="wifiTableBody" class="divide-y divide-[#161a24]">
             <tr>
               <td colspan="8" class="py-8 text-center text-slate-500">
-                // Sniffing 802.11 beacon frames... Connect serial stream to populate networks.
+                No Wi-Fi networks detected. Connect serial to start.
               </td>
             </tr>
           </tbody>
@@ -315,18 +450,16 @@
     </section>
   </main>
 
-  <!-- ========================================================================= -->
-  <!-- TAB 3: BLUETOOTH LE (DEVICES & BEACONS) -->
-  <!-- ========================================================================= -->
+  <!-- Tab 3: Bluetooth LE -->
   <main id="tabContentBle" class="flex-1 flex flex-col gap-3 hidden">
-    <!-- Top Row: BLE Metrics & Proximity Overview -->
+    <!-- BLE Metrics & Proximity Overview -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-      <!-- Left: Active Devices Overview (7 cols) -->
+      <!-- Active Devices Overview (7 cols) -->
       <section class="lg:col-span-7 panel rounded-lg p-3 flex flex-col justify-between">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
           <div class="flex items-center space-x-2">
-            <span class="text-white font-semibold">BLUETOOTH LOW ENERGY SCANNER</span>
-            <span class="text-slate-500">(NimBLE-Arduino Passive Sniffer)</span>
+            <span class="text-white font-semibold">BLUETOOTH LE SCANNER</span>
+            <span class="text-slate-500">(NimBLE Passive Sniffer)</span>
           </div>
           <span class="text-purple-400 text-[11px]">Window: 80ms / sweep</span>
         </div>
@@ -345,21 +478,21 @@
           </div>
         </div>
         <div class="text-[11px] mono text-slate-400 bg-[#0b0d13] p-2 rounded border border-[#1a1e29] flex justify-between items-center">
-          <div><span class="text-slate-500">Mode:</span> GAP Passive Observer (Zero Heap Churn)</div>
-          <div><span class="text-slate-500">Transceiver:</span> ESP32 2.4 GHz Shared Core</div>
+          <div><span class="text-slate-500">Mode:</span> GAP Passive Observer</div>
+          <div><span class="text-slate-500">Band:</span> 2.4 GHz Channels 37/38/39</div>
         </div>
       </section>
 
-      <!-- Right: Proximity Categorization (5 cols) -->
+      <!-- Proximity Summary (5 cols) -->
       <section class="lg:col-span-5 panel rounded-lg p-3 flex flex-col justify-between">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
-          <span class="text-white font-semibold">PROXIMITY RADAR SUMMARY</span>
-          <span class="text-slate-500">ESTIMATED</span>
+          <span class="text-white font-semibold">PROXIMITY SUMMARY</span>
+          <span class="text-slate-500">RSSI APPROX</span>
         </div>
         <div class="space-y-2.5 my-1">
           <div>
             <div class="flex justify-between text-xs mono text-slate-300 mb-1">
-              <span class="text-emerald-400 font-medium">● Immediate (&lt; 1 meter / &gt; -60 dBm)</span>
+              <span class="text-emerald-400 font-medium">● Immediate (&lt; 1m / &gt; -60 dBm)</span>
               <span id="bleCountImmediate" class="text-slate-400">0</span>
             </div>
             <div class="w-full bg-[#141722] h-2 rounded overflow-hidden">
@@ -368,7 +501,7 @@
           </div>
           <div>
             <div class="flex justify-between text-xs mono text-slate-300 mb-1">
-              <span class="text-amber-400 font-medium">● Near (1 to 3 meters / -60 to -75 dBm)</span>
+              <span class="text-amber-400 font-medium">● Near (1 to 3m / -60 to -75 dBm)</span>
               <span id="bleCountNear" class="text-slate-400">0</span>
             </div>
             <div class="w-full bg-[#141722] h-2 rounded overflow-hidden">
@@ -377,7 +510,7 @@
           </div>
           <div>
             <div class="flex justify-between text-xs mono text-slate-300 mb-1">
-              <span class="text-purple-400 font-medium">● Far (&gt; 3 meters / &lt; -75 dBm)</span>
+              <span class="text-purple-400 font-medium">● Far (&gt; 3m / &lt; -75 dBm)</span>
               <span id="bleCountFar" class="text-slate-400">0</span>
             </div>
             <div class="w-full bg-[#141722] h-2 rounded overflow-hidden">
@@ -386,16 +519,16 @@
           </div>
         </div>
         <div class="text-[10px] text-slate-500 mono text-right mt-1">
-          Based on 2.4 GHz path loss free-space approximation
+          Free-space path loss approximation
         </div>
       </section>
     </div>
 
-    <!-- Bottom Row: Discovered BLE Devices Table -->
+    <!-- Discovered BLE Devices Table -->
     <section class="panel rounded-lg p-3 flex-1 flex flex-col">
       <div class="flex flex-wrap items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono gap-2">
         <div class="flex items-center space-x-2">
-          <span class="text-white font-semibold">DISCOVERED BLE ADVERTISERS & PERIPHERALS</span>
+          <span class="text-white font-semibold">DISCOVERED BLE DEVICES</span>
           <span class="text-slate-500 text-[11px]" id="bleTableCount">0 devices active</span>
         </div>
         <div class="flex items-center space-x-2">
@@ -412,17 +545,17 @@
             <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
               <th class="py-2 px-3 font-semibold">DEVICE NAME</th>
               <th class="py-2 px-3 font-semibold">MAC ADDRESS</th>
-              <th class="py-2 px-3 font-semibold">RSSI (dBm)</th>
-              <th class="py-2 px-3 font-semibold">ESTIMATED PROXIMITY</th>
-              <th class="py-2 px-3 font-semibold">SIGNAL QUALITY</th>
-              <th class="py-2 px-3 font-semibold">PACKETS SEEN</th>
-              <th class="py-2 px-3 font-semibold">LAST ADVERTISED</th>
+              <th class="py-2 px-3 font-semibold">RSSI</th>
+              <th class="py-2 px-3 font-semibold">PROXIMITY</th>
+              <th class="py-2 px-3 font-semibold">SIGNAL</th>
+              <th class="py-2 px-3 font-semibold">SEEN</th>
+              <th class="py-2 px-3 font-semibold">LAST SEEN</th>
             </tr>
           </thead>
           <tbody id="bleTableBody" class="divide-y divide-[#161a24]">
             <tr>
               <td colspan="7" class="py-8 text-center text-slate-500">
-                // Passive scanning on 2.4 GHz BLE advertising channels (37, 38, 39)...
+                No BLE devices detected. Connect serial to start.
               </td>
             </tr>
           </tbody>
@@ -431,34 +564,30 @@
     </section>
   </main>
 
-  <!-- ========================================================================= -->
-  <!-- COLLAPSIBLE TELEMETRY STREAM LOG (BOTTOM DRAWER) -->
-  <!-- ========================================================================= -->
+  <!-- Telemetry Stream Drawer -->
   <section class="mt-3 panel rounded-lg p-2.5">
     <div class="flex items-center justify-between text-xs mono">
       <div class="flex items-center space-x-2 cursor-pointer select-none" id="toggleStreamHeader">
-        <span class="text-slate-400 font-semibold">RAW TELEMETRY STREAM</span>
-        <span class="text-[10px] text-slate-500" id="streamStatus">(Click to expand/collapse)</span>
+        <span class="text-slate-400 font-semibold">RAW TELEMETRY</span>
+        <span class="text-[10px] text-slate-500" id="streamStatus">(Toggle)</span>
       </div>
       <div class="flex items-center space-x-2">
         <button id="clearStreamBtn" class="text-[11px] text-slate-500 hover:text-slate-300">Clear</button>
       </div>
     </div>
     <div id="streamBox" class="mt-2 mono text-[10px] text-slate-400 overflow-y-auto bg-[#040507] p-2 rounded border border-[#181b24] space-y-0.5 h-20 transition-all">
-      <div class="text-slate-600">// Waiting for serial packets at 921600 baud...</div>
+      <div class="text-slate-600">Waiting for serial telemetry...</div>
     </div>
   </section>
 
-  <!-- ========================================================================= -->
-  <!-- JAVASCRIPT LOGIC -->
-  <!-- ========================================================================= -->
+  <!-- JavaScript -->
   <script>
-    const BINS = 64;
+    const BINS = 128;
     const CHANNELS = 13;
-    const FREQ_START = 87.5;
-    const FREQ_SPAN = 20.5;
+    const FREQ_START = 76.0;
+    const FREQ_SPAN = 32.0;
 
-    // --- TAB SWITCHING LOGIC ---
+    // Navigation Tabs
     const tabs = {
       radio: { btn: document.getElementById('tabBtnRadio'), content: document.getElementById('tabContentRadio') },
       wifi: { btn: document.getElementById('tabBtnWifi'), content: document.getElementById('tabContentWifi') },
@@ -491,12 +620,11 @@
     tabs.wifi.btn.addEventListener('click', () => setActiveTab('wifi'));
     tabs.ble.btn.addEventListener('click', () => setActiveTab('ble'));
 
-    // --- CHART.JS SETUP ---
     // 1. FM Spectrum Line Chart
     const specCtx = document.getElementById('spectrumChart').getContext('2d');
     const specLabels = Array.from({ length: BINS }, (_, i) => {
       const f = FREQ_START + (i * (FREQ_SPAN / (BINS - 1)));
-      return (i % 8 === 0 || i === BINS - 1) ? f.toFixed(1) : "";
+      return (i % 16 === 0 || i === BINS - 1) ? f.toFixed(1) : "";
     });
 
     const spectrumChart = new Chart(specCtx, {
@@ -610,12 +738,12 @@
       }
     }
 
-    // --- ACCUMULATION DATA STORES ---
-    const detectedStations = new Map(); // key: freqString (e.g. "98.3")
-    const discoveredAps = new Map();     // key: bssid
-    const discoveredBles = new Map();    // key: mac
+    // Data Stores
+    const detectedStations = new Map();
+    const discoveredAps = new Map();
+    const discoveredBles = new Map();
 
-    // --- WEB SERIAL DRIVER ---
+    // Web Serial
     let port = null;
     let reader = null;
     let keepRunning = false;
@@ -703,10 +831,256 @@
       }
     }
 
-    // --- TELEMETRY PARSER ---
+    // FM Tuner State & Controls
+    let currentTunerFreq = 87.5;
+    let isTunerMuted = false;
+    let isTunerMono = false;
+
+    async function sendSerialCommand(cmd) {
+      if (!port || !port.writable) return;
+      try {
+        const textEncoder = new TextEncoder();
+        const writer = port.writable.getWriter();
+        await writer.write(textEncoder.encode(cmd + "\n"));
+        writer.releaseLock();
+      } catch (err) {
+        console.error("Failed to send command:", err);
+      }
+    }
+
+    window.tuneToStation = function(freq) {
+      const f = parseFloat(freq);
+      if (!isNaN(f)) {
+        setTunerFrequency(f);
+        switchMode('tuner');
+      }
+    };
+
+    function setTunerFrequency(freq) {
+      currentTunerFreq = Math.max(76.0, Math.min(108.0, Math.round(freq * 10) / 10));
+      const str = currentTunerFreq.toFixed(1);
+      document.getElementById('tunerDisplayFreq').innerText = str;
+      document.getElementById('tunerSlider').value = str;
+      document.getElementById('tunerSliderVal').innerText = str + ' MHz';
+      document.getElementById('tunerDirectInput').value = str;
+      sendSerialCommand(`TUNE ${str}`);
+    }
+
+    function switchMode(mode) {
+      const btnSweep = document.getElementById('modeSweepBtn');
+      const btnTuner = document.getElementById('modeTunerBtn');
+      const btnBug = document.getElementById('modeBugBtn');
+      const tunerSec = document.getElementById('tunerControlsSection');
+      const bugSec = document.getElementById('bugHunterSection');
+
+      if (mode === 'bug') {
+        btnBug.className = "px-3 py-1 rounded text-xs font-semibold bg-amber-600 text-white border border-amber-500 transition";
+        btnSweep.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-slate-400 border border-[#232938] hover:text-white transition";
+        btnTuner.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-slate-400 border border-[#232938] hover:text-white transition";
+        if (tunerSec) tunerSec.classList.add('hidden');
+        if (bugSec) bugSec.classList.remove('hidden');
+        sendSerialCommand('BUG_HUNTER');
+      } else if (mode === 'tuner') {
+        btnTuner.className = "px-3 py-1 rounded text-xs font-semibold bg-cyan-600 text-white border border-cyan-500 transition";
+        btnSweep.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-slate-400 border border-[#232938] hover:text-white transition";
+        btnBug.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-amber-400 border border-[#3d2f14] hover:bg-[#261e0e] transition";
+        if (tunerSec) tunerSec.classList.remove('hidden');
+        if (bugSec) bugSec.classList.add('hidden');
+        sendSerialCommand(`TUNE ${currentTunerFreq.toFixed(1)}`);
+      } else {
+        btnSweep.className = "px-3 py-1 rounded text-xs font-semibold bg-cyan-600 text-white border border-cyan-500 transition";
+        btnTuner.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-slate-400 border border-[#232938] hover:text-white transition";
+        btnBug.className = "px-3 py-1 rounded text-xs font-semibold bg-[#141720] text-amber-400 border border-[#3d2f14] hover:bg-[#261e0e] transition";
+        if (tunerSec) tunerSec.classList.remove('hidden');
+        if (bugSec) bugSec.classList.add('hidden');
+        sendSerialCommand('SWEEP');
+      }
+    }
+
+    function updateBugHunterUI(d) {
+      const threatBadge = document.getElementById('threatBadge');
+      const noiseVal = document.getElementById('bugNoiseVal');
+      const tbody = document.getElementById('bugTableBody');
+
+      if (noiseVal && d.noise !== undefined) {
+        noiseVal.innerText = d.noise;
+      }
+
+      if (threatBadge && d.threat !== undefined) {
+        if (d.threat === 2) {
+          threatBadge.className = "px-3 py-1.5 rounded text-xs font-bold mono bg-rose-950 text-rose-300 border border-rose-800";
+          threatBadge.innerText = "CRITICAL (Near-Field Carrier)";
+        } else if (d.threat === 1) {
+          threatBadge.className = "px-3 py-1.5 rounded text-xs font-bold mono bg-amber-950 text-amber-300 border border-amber-800";
+          threatBadge.innerText = "ELEVATED (Carrier Detected)";
+        } else {
+          threatBadge.className = "px-3 py-1.5 rounded text-xs font-bold mono bg-emerald-950 text-emerald-300 border border-emerald-800";
+          threatBadge.innerText = "CLEAR (No Anomalies)";
+        }
+      }
+
+      if (tbody) {
+        if (!Array.isArray(d.targets) || d.targets.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="5" class="py-4 text-center text-slate-500 text-[11px]">
+                No near-field transmitters detected.
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        let html = '';
+        for (const t of d.targets) {
+          const freqStr = Number(t.freq).toFixed(1);
+          html += `
+            <tr class="hover:bg-[#1a0f16] transition-colors">
+              <td class="py-2 px-2 font-bold text-amber-400">${freqStr} MHz</td>
+              <td class="py-2 px-2 text-slate-200">
+                <span class="font-semibold">${t.lev}/15</span>
+                <span class="text-amber-400 text-[10px] ml-1">(+${t.delta} vs noise)</span>
+              </td>
+              <td class="py-2 px-2">
+                <span class="px-1.5 py-0.5 rounded text-[10px] ${t.valid_if ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'}">
+                  IF: ${t.if_cnt} ${t.valid_if ? '(Lock)' : ''}
+                </span>
+              </td>
+              <td class="py-2 px-2 text-rose-400 font-semibold text-[10px]">
+                Analog Carrier (Mono)
+              </td>
+              <td class="py-2 px-2 text-center">
+                <button onclick="tuneToStation('${freqStr}')" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800 transition">
+                  Listen
+                </button>
+              </td>
+            </tr>
+          `;
+        }
+        tbody.innerHTML = html;
+      }
+    }
+
+    function updateTunerUI(d) {
+      if (d.freq !== undefined) {
+        currentTunerFreq = d.freq;
+        const str = Number(d.freq).toFixed(1);
+        document.getElementById('tunerDisplayFreq').innerText = str;
+        document.getElementById('tunerSlider').value = str;
+        document.getElementById('tunerSliderVal').innerText = str + ' MHz';
+      }
+
+      if (d.lev !== undefined) {
+        const pct = Math.round((d.lev / 15) * 100);
+        document.getElementById('tunerSignalTxt').innerText = `${d.lev}/15 (~${Math.round(d.lev * 4.2 + 10)} dBµV)`;
+        document.getElementById('tunerSignalBar').style.width = pct + '%';
+        document.getElementById('tunerSignalBar').className = (d.lev >= 10 ? 'bg-cyan-400' : d.lev >= 6 ? 'bg-emerald-400' : 'bg-amber-400') + ' h-full transition-all duration-150';
+      }
+
+      const stBadge = document.getElementById('tunerStereoBadge');
+      if (stBadge && d.stereo !== undefined) {
+        if (d.stereo) {
+          stBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700";
+          stBadge.innerText = "STEREO";
+        } else {
+          stBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-500 border border-slate-700";
+          stBadge.innerText = "MONO";
+        }
+      }
+
+      const ifBadge = document.getElementById('tunerIfBadge');
+      if (ifBadge && d.if_cnt !== undefined) {
+        if (d.if_lock) {
+          ifBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700";
+          ifBadge.innerText = `IF: ${d.if_cnt} (225 kHz Lock)`;
+        } else {
+          ifBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700";
+          ifBadge.innerText = `IF: ${d.if_cnt} (Offset)`;
+        }
+      }
+
+      if (d.mute !== undefined) {
+        isTunerMuted = d.mute;
+        const muteBtn = document.getElementById('tunerMuteBtn');
+        if (muteBtn) {
+          muteBtn.innerText = isTunerMuted ? "UNMUTE" : "MUTE";
+          muteBtn.className = isTunerMuted ? "flex-1 py-1 bg-rose-950 text-rose-300 border border-rose-800 rounded text-center text-[11px] font-bold" : "flex-1 py-1 bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] rounded text-center text-[11px]";
+        }
+      }
+
+      if (d.mono !== undefined) {
+        isTunerMono = d.mono;
+        const monoBtn = document.getElementById('tunerMonoBtn');
+        if (monoBtn) {
+          monoBtn.innerText = isTunerMono ? "AUTO STEREO" : "FORCE MONO";
+        }
+      }
+    }
+
+    document.getElementById('modeSweepBtn').addEventListener('click', () => switchMode('sweep'));
+    document.getElementById('modeTunerBtn').addEventListener('click', () => switchMode('tuner'));
+    document.getElementById('modeBugBtn').addEventListener('click', () => switchMode('bug'));
+
+    const bugSens = document.getElementById('bugSensSlider');
+    if (bugSens) {
+      bugSens.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        document.getElementById('bugSensVal').innerHTML = `Lev &ge; ${val}`;
+        sendSerialCommand(`BUG_SENS ${val}`);
+      });
+    }
+
+    document.getElementById('tunerSlider').addEventListener('input', (e) => {
+      setTunerFrequency(parseFloat(e.target.value));
+    });
+
+    document.getElementById('tunerTuneBtn').addEventListener('click', () => {
+      const val = parseFloat(document.getElementById('tunerDirectInput').value);
+      if (!isNaN(val)) setTunerFrequency(val);
+    });
+
+    document.getElementById('tunerDirectInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const val = parseFloat(document.getElementById('tunerDirectInput').value);
+        if (!isNaN(val)) setTunerFrequency(val);
+      }
+    });
+
+    document.getElementById('btnStepDown10').addEventListener('click', () => setTunerFrequency(currentTunerFreq - 1.0));
+    document.getElementById('btnStepDown01').addEventListener('click', () => setTunerFrequency(currentTunerFreq - 0.1));
+    document.getElementById('btnStepUp01').addEventListener('click', () => setTunerFrequency(currentTunerFreq + 0.1));
+    document.getElementById('btnStepUp10').addEventListener('click', () => setTunerFrequency(currentTunerFreq + 1.0));
+
+    document.getElementById('btnSeekDown').addEventListener('click', () => sendSerialCommand('SEEK_DOWN'));
+    document.getElementById('btnSeekUp').addEventListener('click', () => sendSerialCommand('SEEK_UP'));
+
+    document.getElementById('tunerMuteBtn').addEventListener('click', () => {
+      isTunerMuted = !isTunerMuted;
+      sendSerialCommand(`MUTE ${isTunerMuted ? 1 : 0}`);
+    });
+
+    document.getElementById('tunerMonoBtn').addEventListener('click', () => {
+      isTunerMono = !isTunerMono;
+      sendSerialCommand(`MONO ${isTunerMono ? 1 : 0}`);
+    });
+
+    // Telemetry Parser
     function parseRecord(line) {
       try {
         const d = JSON.parse(line);
+
+        if (d.mode === 'tuner') {
+          updateTunerUI(d);
+          return;
+        }
+
+        if (d.mode === 'bug_hunter') {
+          if (d.seq !== undefined) seqVal.innerText = `#${d.seq}`;
+          if (d.sweep_ms !== undefined) sweepVal.innerText = `${d.sweep_ms} ms`;
+          updateBugHunterUI(d);
+          appendStreamLog(line);
+          return;
+        }
 
         // Frame rate calculation
         frameCount++;
@@ -732,7 +1106,7 @@
           }
         }
 
-        // 1. Process FM Broadcast Telemetry
+        // 1. FM Telemetry
         if (Array.isArray(d.fm) && d.fm.length === BINS) {
           spectrumChart.data.datasets[0].data = d.fm;
           spectrumChart.update('none');
@@ -750,16 +1124,17 @@
           const fmPeakBadge = document.getElementById('fmPeakBadge');
           if (maxVal > 0) {
             const freq = (FREQ_START + (maxBin * (FREQ_SPAN / (BINS - 1)))).toFixed(1);
-            fmPeakBadge.innerText = `${freq} MHz [${maxVal}/15]`;
+            const peakStation = Array.isArray(d.stations) ? d.stations.find(s => Number(s.freq).toFixed(1) === freq) : null;
+            const stereoTag = peakStation && peakStation.stereo ? ' [STEREO]' : '';
+            fmPeakBadge.innerText = `${freq} MHz [${maxVal}/15]${stereoTag}`;
           } else {
             fmPeakBadge.innerText = `-- MHz [0]`;
           }
 
-          // Detect local carrier peaks in FM spectrum
-          detectFmStations(d.fm);
+          detectFmStations(d.fm, d.stations);
         }
 
-        // 2. Process Wi-Fi Telemetry
+        // 2. Wi-Fi Telemetry
         if (Array.isArray(d.wifi_pkts) && d.wifi_pkts.length === CHANNELS) {
           wifiChart.data.datasets[0].data = d.wifi_pkts;
           wifiChart.update('none');
@@ -778,8 +1153,7 @@
           document.getElementById('wifiPktTotal').innerText = totalPkts;
           document.getElementById('wifiBusiestCh').innerText = (maxPkts > 0) ? `Ch ${busiestCh} (${maxPkts} pkts)` : '--';
 
-          // Cleanest standard channel (1, 6, 11)
-          const stdChs = [0, 5, 10]; // index for 1, 6, 11
+          const stdChs = [0, 5, 10];
           let minStdPkts = Infinity;
           let cleanestCh = 1;
           for (let idx of stdChs) {
@@ -791,7 +1165,7 @@
           document.getElementById('wifiCleanestCh').innerText = `Ch ${cleanestCh} (${minStdPkts} pkts)`;
         }
 
-        // Process Discovered APs
+        // Wi-Fi APs
         if (Array.isArray(d.aps)) {
           for (const ap of d.aps) {
             if (ap.bssid && ap.bssid !== "00:00:00:00:00:00") {
@@ -810,7 +1184,7 @@
           renderWifiTable();
         }
 
-        // 3. Process BLE Telemetry
+        // 3. BLE Telemetry
         if (d.ble_devs !== undefined) {
           document.getElementById('bleActiveCurrent').innerText = d.ble_devs;
         }
@@ -834,7 +1208,6 @@
           renderBleTable();
         }
 
-        // Update raw telemetry stream drawer
         appendStreamLog(line);
 
       } catch (err) {
@@ -842,22 +1215,19 @@
       }
     }
 
-    // --- DETECT FM RADIO STATIONS ---
-    function detectFmStations(fm) {
-      // Find local maxima with threshold >= 4
-      for (let i = 1; i < BINS - 1; i++) {
-        const val = fm[i];
-        if (val >= 4 && val >= fm[i - 1] && val >= fm[i + 1]) {
-          const rawFreq = FREQ_START + (i * (FREQ_SPAN / (BINS - 1)));
-          // Round to nearest 0.1 MHz
-          const freqStr = (Math.round(rawFreq * 10) / 10).toFixed(1);
+    // Station Detection
+    function detectFmStations(fm, stations) {
+      if (Array.isArray(stations) && stations.length > 0) {
+        for (const st of stations) {
+          const freqStr = Number(st.freq).toFixed(1);
+          const val = Number(st.lev);
           const old = detectedStations.get(freqStr);
-
-          // Status & quality
           const estDbuv = Math.round(val * 4.2 + 10);
           const quality = val >= 12 ? 'Excellent' : val >= 8 ? 'Good' : val >= 5 ? 'Fair' : 'Weak';
-          const audio = val >= 7 ? 'Stereo / Hi-Fi' : 'Mono';
-          const status = val >= 10 ? 'Strong Carrier' : 'Active Station';
+          const audio = st.stereo ? 'Stereo' : 'Mono';
+          const ifCount = st.if_cnt !== undefined ? Number(st.if_cnt) : null;
+          const ifLock = st.if_lock !== undefined ? Boolean(st.if_lock) : false;
+          const status = ifLock ? 'IF Locked (225 kHz)' : (val >= 10 ? 'Strong Carrier' : 'Active');
 
           detectedStations.set(freqStr, {
             freq: freqStr,
@@ -865,16 +1235,45 @@
             estDbuv: estDbuv,
             quality: quality,
             audio: audio,
+            ifCount: ifCount,
+            ifLock: ifLock,
             status: status,
             seenCount: (old ? old.seenCount : 0) + 1,
             lastSeen: Date.now()
           });
         }
+      } else {
+        for (let i = 1; i < BINS - 1; i++) {
+          const val = fm[i];
+          if (val >= 4 && val >= fm[i - 1] && val >= fm[i + 1]) {
+            const rawFreq = FREQ_START + (i * (FREQ_SPAN / (BINS - 1)));
+            const freqStr = (Math.round(rawFreq * 10) / 10).toFixed(1);
+            const old = detectedStations.get(freqStr);
+
+            const estDbuv = Math.round(val * 4.2 + 10);
+            const quality = val >= 12 ? 'Excellent' : val >= 8 ? 'Good' : val >= 5 ? 'Fair' : 'Weak';
+            const audio = val >= 7 ? 'Stereo' : 'Mono';
+            const status = val >= 10 ? 'Strong Carrier' : 'Active';
+
+            detectedStations.set(freqStr, {
+              freq: freqStr,
+              rssi: val,
+              estDbuv: estDbuv,
+              quality: quality,
+              audio: audio,
+              ifCount: null,
+              ifLock: false,
+              status: status,
+              seenCount: (old ? old.seenCount : 0) + 1,
+              lastSeen: Date.now()
+            });
+          }
+        }
       }
       renderRadioTable();
     }
 
-    // --- RENDER RADIO TABLE ---
+    // Render Radio Table
     function renderRadioTable() {
       const tbody = document.getElementById('radioTableBody');
       const badge = document.getElementById('badgeRadioCount');
@@ -883,15 +1282,14 @@
       if (detectedStations.size === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="7" class="py-8 text-center text-slate-500">
-              No active FM carriers detected yet. Scanning 87.5 – 108.0 MHz...
+            <td colspan="9" class="py-8 text-center text-slate-500">
+              No FM carriers detected.
             </td>
           </tr>
         `;
         return;
       }
 
-      // Sort by signal descending
       const sorted = Array.from(detectedStations.values()).sort((a, b) => b.rssi - a.rssi);
       let html = '';
       for (const st of sorted) {
@@ -914,19 +1312,31 @@
             <td class="py-2.5 px-3 text-slate-300">~${st.estDbuv} dBµV</td>
             <td class="py-2.5 px-3 ${qualityColor} font-medium">${st.quality}</td>
             <td class="py-2.5 px-3 text-slate-300">
-              <span class="px-1.5 py-0.5 rounded text-[10px] ${st.audio.includes('Stereo') ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}">
+              <span class="px-1.5 py-0.5 rounded text-[10px] ${st.audio === 'Stereo' ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}">
                 ${st.audio}
               </span>
             </td>
+            <td class="py-2.5 px-3 text-slate-300">
+              ${st.ifCount !== null ? `
+                <span class="px-1.5 py-0.5 rounded text-[10px] ${st.ifLock ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'}">
+                  ${st.ifCount} (${st.ifLock ? 'Lock' : 'Offset'})
+                </span>
+              ` : '<span class="text-slate-600">--</span>'}
+            </td>
             <td class="py-2.5 px-3 text-slate-400">${st.status}</td>
             <td class="py-2.5 px-3 text-slate-500">${ago === 0 ? 'just now' : ago + 's ago'} (${st.seenCount}x)</td>
+            <td class="py-2.5 px-3 text-center">
+              <button onclick="tuneToStation('${st.freq}')" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 transition">
+                Tune
+              </button>
+            </td>
           </tr>
         `;
       }
       tbody.innerHTML = html;
     }
 
-    // --- RENDER WI-FI TABLE ---
+    // Render Wi-Fi Table
     function renderWifiTable() {
       const tbody = document.getElementById('wifiTableBody');
       const badge = document.getElementById('badgeWifiCount');
@@ -942,7 +1352,7 @@
         tbody.innerHTML = `
           <tr>
             <td colspan="8" class="py-8 text-center text-slate-500">
-              // Sniffing 802.11 beacon frames... No APs received yet.
+              No Wi-Fi networks detected.
             </td>
           </tr>
         `;
@@ -954,12 +1364,10 @@
         return ap.ssid.toLowerCase().includes(filter) || ap.bssid.toLowerCase().includes(filter);
       });
 
-      // Sort by RSSI descending (strongest first)
       filtered.sort((a, b) => b.rssi - a.rssi);
 
       let html = '';
       for (const ap of filtered) {
-        // Quality %: -100 dBm = 0%, -50 dBm = 100%
         const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
         const barColor = ap.rssi >= -65 ? 'bg-emerald-400' : ap.rssi >= -78 ? 'bg-amber-400' : 'bg-rose-400';
         const ago = Math.round((Date.now() - ap.lastSeen) / 1000);
@@ -993,7 +1401,7 @@
       tbody.innerHTML = html;
     }
 
-    // --- RENDER BLE TABLE ---
+    // Render BLE Table
     function renderBleTable() {
       const tbody = document.getElementById('bleTableBody');
       const badge = document.getElementById('badgeBleCount');
@@ -1009,7 +1417,7 @@
         tbody.innerHTML = `
           <tr>
             <td colspan="7" class="py-8 text-center text-slate-500">
-              // Passive scanning on 2.4 GHz BLE advertising channels...
+              No BLE devices detected.
             </td>
           </tr>
         `;
@@ -1022,10 +1430,8 @@
         return b.name.toLowerCase().includes(filter) || b.addr.toLowerCase().includes(filter);
       });
 
-      // Sort by RSSI descending
       filtered.sort((a, b) => b.rssi - a.rssi);
 
-      // Radar summary metrics
       let cImm = 0, cNear = 0, cFar = 0;
       for (const d of allDevices) {
         if (d.rssi >= -60) cImm++;
@@ -1048,11 +1454,11 @@
 
         let proxBadge = '';
         if (b.rssi >= -60) {
-          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800">Immediate (&lt;1m)</span>`;
+          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800">&lt; 1m</span>`;
         } else if (b.rssi >= -75) {
-          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-800">Near (1-3m)</span>`;
+          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-800">1 – 3m</span>`;
         } else {
-          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-950 text-purple-300 border border-purple-800">Far (&gt;3m)</span>`;
+          proxBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-950 text-purple-300 border border-purple-800">&gt; 3m</span>`;
         }
 
         html += `
@@ -1079,7 +1485,7 @@
       tbody.innerHTML = html;
     }
 
-    // --- STREAM DRAWER & CONTROLS ---
+    // Stream Drawer
     function appendStreamLog(line) {
       const row = document.createElement('div');
       row.className = "truncate hover:text-slate-200 transition";
@@ -1137,7 +1543,7 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    // Auto-refresh tables every 2 seconds to update "last seen" relative counters
+    // Auto-refresh tables every 2 seconds
     setInterval(() => {
       if (detectedStations.size > 0 && !tabs.radio.content.classList.contains('hidden')) {
         renderRadioTable();

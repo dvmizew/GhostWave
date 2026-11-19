@@ -19,11 +19,12 @@
 #define TELEMETRY_BUFFER_SIZE   2048
 
 // RF SCANNER CONFIGURATION & CONSTANTS
-#define GHOSTWAVE_FM_BINS       64       // 64 frequency steps across FM band
-#define GHOSTWAVE_FM_FREQ_START 87.5f    // FM sweep start in MHz
-#define GHOSTWAVE_FM_FREQ_SPAN  20.5f    // 108.0 MHz - 87.5 MHz
+#define GHOSTWAVE_FM_BINS       128      // 128 frequency steps (Fine Scan)
+#define GHOSTWAVE_FM_FREQ_START 76.0f    // FM sweep start in MHz (Japan + World band)
+#define GHOSTWAVE_FM_FREQ_SPAN  32.0f    // 108.0 MHz - 76.0 MHz (32.0 MHz span)
 #define TEA5767_I2C_ADDR        0x60     // Philips TEA5767 7-bit I2C address
-#define TEA5767_SETTLE_DELAY_US 5000     // Settle delay after tuning (5ms PLL lock window)
+#define TEA5767_SETTLE_DELAY_US 2000     // 2.0ms PLL lock window for fine steps
+#define FM_STATION_MIN_LEVEL    5        // Minimum ADC level (0-15) for peak station detection
 
 #define GHOSTWAVE_WIFI_CHANNELS 13       // 2.4 GHz 802.11 b/g/n channels 1 to 13
 #define WIFI_CHANNEL_DWELL_MS   25       // Sniffer dwell per channel (13 * 25ms = 325ms)
