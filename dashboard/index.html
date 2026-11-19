@@ -106,10 +106,10 @@
           <option value="460800">460800 Baud</option>
           <option value="115200">115200 Baud</option>
         </select>
-        <button id="connectBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-3.5 py-1 rounded text-xs transition flex items-center gap-1">
+        <button id="connectBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-3.5 py-1 rounded text-xs transition flex items-center gap-1 disabled:opacity-40">
           <span>Connect</span>
         </button>
-        <button id="disconnectBtn" disabled class="bg-[#141720] text-slate-500 border border-[#232938] px-2.5 py-1 rounded text-xs transition disabled:opacity-40">
+        <button id="disconnectBtn" disabled class="bg-[#141720] hover:bg-[#1e2330] text-slate-300 border border-[#232938] px-2.5 py-1 rounded text-xs transition disabled:opacity-40 disabled:hover:bg-[#141720] disabled:text-slate-500">
           Disconnect
         </button>
       </div>
@@ -746,6 +746,7 @@
     // Web Serial
     let port = null;
     let reader = null;
+    let readLoopPromise = null;
     let keepRunning = false;
     let frameCount = 0;
     let lastTime = performance.now();
@@ -760,38 +761,7 @@
     const seqVal = document.getElementById('seqVal');
     const streamBox = document.getElementById('streamBox');
 
-    connectBtn.addEventListener('click', async () => {
-      if (!('serial' in navigator)) {
-        alert("Web Serial API requires Chrome, Edge, or Opera.");
-        return;
-      }
-      try {
-        port = await navigator.serial.requestPort();
-        const baud = parseInt(baudRateSel.value, 10);
-        await port.open({ baudRate: baud });
-
-        statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-        statusLabel.innerText = `ONLINE (${baud})`;
-        statusLabel.className = "text-xs text-emerald-400 mono font-semibold";
-
-        connectBtn.disabled = true;
-        connectBtn.classList.add('opacity-40');
-        disconnectBtn.disabled = false;
-        baudRateSel.disabled = true;
-
-        keepRunning = true;
-        readLoop();
-      } catch (err) {
-        console.error("Connect failed:", err);
-      }
-    });
-
-    disconnectBtn.addEventListener('click', async () => {
-      keepRunning = false;
-      if (reader) await reader.cancel();
-      if (port) await port.close();
-      port = null;
-
+    function resetConnectionUI() {
       statusDot.className = "w-2.5 h-2.5 rounded-full bg-slate-600";
       statusLabel.innerText = "DISCONNECTED";
       statusLabel.className = "text-xs text-slate-400 mono";
@@ -799,35 +769,154 @@
       connectBtn.disabled = false;
       connectBtn.classList.remove('opacity-40');
       disconnectBtn.disabled = true;
+      disconnectBtn.classList.add('opacity-40');
       baudRateSel.disabled = false;
+    }
+
+    function setConnectedUI(baud) {
+      statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+      statusLabel.innerText = `ONLINE (${baud})`;
+      statusLabel.className = "text-xs text-emerald-400 mono font-semibold";
+
+      connectBtn.disabled = true;
+      connectBtn.classList.add('opacity-40');
+      disconnectBtn.disabled = false;
+      disconnectBtn.classList.remove('opacity-40');
+      baudRateSel.disabled = true;
+    }
+
+    async function connectSerial() {
+      if (!('serial' in navigator)) {
+        alert("Web Serial API requires Chrome, Edge, Brave, or Opera.");
+        return;
+      }
+
+      let selectedPort = null;
+      try {
+        selectedPort = await navigator.serial.requestPort();
+      } catch (err) {
+        // User cancelled the prompt (NotFoundError)
+        if (err.name !== 'NotFoundError') {
+          console.error("Port selection error:", err);
+        }
+        return;
+      }
+
+      if (!selectedPort) return;
+
+      try {
+        const baud = parseInt(baudRateSel.value, 10);
+        await selectedPort.open({ baudRate: baud });
+        port = selectedPort;
+        keepRunning = true;
+        setConnectedUI(baud);
+        readLoopPromise = readLoop();
+      } catch (err) {
+        console.error("Open port error:", err);
+        alert("Failed to open serial port: " + (err.message || err));
+        try {
+          await selectedPort.close();
+        } catch (_) {}
+        port = null;
+        resetConnectionUI();
+      }
+    }
+
+    async function disconnectSerial() {
+      keepRunning = false;
+
+      // 1. Cancel active reader to break the pending reader.read()
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch (err) {
+          console.warn("Reader cancel notice:", err);
+        }
+      }
+
+      // 2. Wait for readLoop to exit its try-finally and release stream lock
+      if (readLoopPromise) {
+        try {
+          await readLoopPromise;
+        } catch (err) {
+          console.warn("Read loop exit notice:", err);
+        }
+        readLoopPromise = null;
+      }
+
+      // 3. Now that streams are completely unlocked, close the physical port
+      if (port) {
+        try {
+          await port.close();
+        } catch (err) {
+          console.error("Port close error:", err);
+        }
+        port = null;
+      }
+
+      reader = null;
+      resetConnectionUI();
+    }
+
+    connectBtn.addEventListener('click', connectSerial);
+    disconnectBtn.addEventListener('click', disconnectSerial);
+
+    // Handle physical cable disconnection
+    if (navigator.serial) {
+      navigator.serial.addEventListener('disconnect', (event) => {
+        if (port && event.target === port) {
+          disconnectSerial();
+        }
+      });
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (port) {
+        disconnectSerial();
+      }
     });
 
     async function readLoop() {
-      const textDecoder = new TextDecoderStream();
-      port.readable.pipeTo(textDecoder.writable);
-      reader = textDecoder.readable.getReader();
+      const decoder = new TextDecoder();
       let buffer = "";
 
-      try {
-        while (keepRunning) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += value;
+      while (port && port.readable && keepRunning) {
+        try {
+          reader = port.readable.getReader();
+        } catch (err) {
+          console.error("getReader error:", err);
+          break;
+        }
 
-          const lines = buffer.split("\n");
-          buffer = lines.pop();
+        try {
+          while (keepRunning) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) {
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop(); // Retain partial trailing chunk
 
-          for (let line of lines) {
-            line = line.trim();
-            if (line.length > 0 && line.startsWith("{") && line.endsWith("}")) {
-              parseRecord(line);
+              for (let line of lines) {
+                line = line.trim();
+                if (line.length > 0 && line.startsWith("{") && line.endsWith("}")) {
+                  parseRecord(line);
+                }
+              }
             }
           }
+        } catch (err) {
+          if (keepRunning) {
+            console.error("Read loop error:", err);
+          }
+        } finally {
+          if (reader) {
+            try {
+              reader.releaseLock();
+            } catch (_) {}
+            reader = null;
+          }
         }
-      } catch (e) {
-        console.warn("Read loop ended:", e);
-      } finally {
-        reader.releaseLock();
       }
     }
 
@@ -837,14 +926,20 @@
     let isTunerMono = false;
 
     async function sendSerialCommand(cmd) {
-      if (!port || !port.writable) return;
+      if (!port || !port.writable || !keepRunning) return;
+      let writer = null;
       try {
         const textEncoder = new TextEncoder();
-        const writer = port.writable.getWriter();
+        writer = port.writable.getWriter();
         await writer.write(textEncoder.encode(cmd + "\n"));
-        writer.releaseLock();
       } catch (err) {
         console.error("Failed to send command:", err);
+      } finally {
+        if (writer) {
+          try {
+            writer.releaseLock();
+          } catch (_) {}
+        }
       }
     }
 
