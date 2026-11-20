@@ -482,6 +482,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                     uint8_t channelUtil = 0xFF;
                     uint8_t caps = 0;
                     uint8_t mesh = 0;
+                    uint16_t mdid = 0;
                     char country[3] = {0};
                     int8_t maxTxPower = 0;
                     char wpsModel[24] = {0};
@@ -564,6 +565,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             }
                         } else if (id == 54 && elen >= 3) { // Mobility Domain -> 802.11r
                             caps |= WIFI_AP_CAP_11R;
+                            mdid = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
                         } else if (id == 70 && elen >= 5) { // RRM Enabled Capabilities -> 802.11k
                             caps |= WIFI_AP_CAP_11K;
                         } else if (id == 113 && elen == 7) { // IEEE 802.11s Mesh Configuration
@@ -774,6 +776,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                 ? static_cast<uint8_t>(caps | (entry.record.caps & (WIFI_AP_CAP_WPS | WIFI_AP_CAP_WPS_LOCK)))
                                 : static_cast<uint8_t>(entry.record.caps | caps);
                             entry.record.mesh = (subtype == 8) ? mesh : static_cast<uint8_t>(entry.record.mesh | mesh);
+                            if (mdid != 0) entry.record.mdid = mdid;
                             if (country[0] != '\0') {
                                 entry.record.country[0] = country[0];
                                 entry.record.country[1] = country[1];
@@ -821,6 +824,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             s_ap_records[idx].record.channelUtil = channelUtil;
                             s_ap_records[idx].record.caps = caps;
                             s_ap_records[idx].record.mesh = mesh;
+                            s_ap_records[idx].record.mdid = mdid;
                             if (country[0] != '\0') {
                                 s_ap_records[idx].record.country[0] = country[0];
                                 s_ap_records[idx].record.country[1] = country[1];

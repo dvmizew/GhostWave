@@ -1410,6 +1410,7 @@
                 channelUtil: (ap.util !== undefined && ap.util >= 0) ? ap.util : (old ? old.channelUtil : -1),
                 caps: (ap.caps !== undefined) ? ap.caps : (old ? old.caps : 0),
                 mesh: (ap.mesh !== undefined) ? ap.mesh : (old ? old.mesh : 0),
+                mdid: (ap.mdid !== undefined && ap.mdid > 0) ? ap.mdid : (old ? old.mdid : 0),
                 country: (ap.cc && ap.cc.length > 0) ? ap.cc : (old ? old.country : ""),
                 maxTxPower: (ap.txp !== undefined && ap.txp > 0) ? ap.txp : (old ? old.maxTxPower : 0),
                 wpsModel: (ap.wps && ap.wps.length > 0) ? ap.wps : (old ? old.wpsModel : ""),
@@ -1708,17 +1709,41 @@
       });
     }
 
-    function getMeshBadge(mesh) {
-      if (!mesh) return '';
+    function getMeshClusterForAp(ap, evilTwins) {
+      if (evilTwins && evilTwins.has(ap.bssid)) return [ap];
+      const hasSsid = ap.ssid && ap.ssid !== "[Hidden SSID]";
+      const hasMdid = (ap.mdid || 0) > 0;
+      if (!hasSsid && !hasMdid) return [ap];
+      return Array.from(discoveredAps.values()).filter(a => {
+        if (evilTwins && evilTwins.has(a.bssid)) return false;
+        const aHasSsid = a.ssid && a.ssid !== "[Hidden SSID]";
+        if (hasSsid && aHasSsid && a.ssid !== ap.ssid) return false;
+        if (hasSsid && a.ssid === ap.ssid && a.auth === ap.auth) return true;
+        if (hasMdid && a.mdid === ap.mdid && a.auth === ap.auth) return true;
+        return false;
+      }).sort((a, b) => b.rssi - a.rssi);
+    }
+
+    function getMeshBadge(ap, cluster = null) {
+      const mesh = ap.mesh || 0;
+      const nodes = cluster ? cluster.length : 1;
+      const nodeSuffix = nodes > 1 ? ` · ${nodes}` : '';
       if (mesh & 0x10) {
-        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="IEEE 802.11s Native Mesh node">802.11s</span>`;
+        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="IEEE 802.11s Native Mesh node${nodes > 1 ? ` (${nodes} nodes detected)` : ''}">802.11s${nodeSuffix}</span>`;
       }
       if (mesh & 0x01) {
         const fh = (mesh & 0x02) !== 0;
         const bh = (mesh & 0x04) !== 0;
         const role = (fh && bh) ? 'Fronthaul + Backhaul' : (bh ? 'Backhaul BSS' : (fh ? 'Fronthaul BSS' : 'EasyMesh'));
         const label = (bh && !fh) ? 'Mesh BH' : 'Mesh';
-        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="Wi-Fi EasyMesh / Multi-AP (${role})">${label}</span>`;
+        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="Wi-Fi EasyMesh / Multi-AP (${role})${nodes > 1 ? ` · ${nodes} nodes detected` : ''}">${label}${nodeSuffix}</span>`;
+      }
+      if (nodes > 1) {
+        const hasRoaming = cluster.some(a => ((a.caps || 0) & 0xE0) !== 0 || (a.mdid || 0) > 0);
+        if (hasRoaming) {
+          return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950/80 text-teal-300 border border-teal-800" title="Multi-node Mesh / Roaming ESS: ${nodes} access points sharing this SSID & security with 802.11k/v/r (e.g. Halo, Deco, AiMesh, Orbi, eero, UniFi)">Mesh · ${nodes}</span>`;
+        }
+        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-800 text-slate-300 border border-slate-700" title="Multi-AP network: ${nodes} access points sharing this SSID & security">${nodes} nodes</span>`;
       }
       return '';
     }
@@ -1845,7 +1870,9 @@
       document.getElementById("modalTitle").innerText = ap.ssid;
       document.getElementById("modalSubtitle").innerText = `BSSID: ${ap.bssid} · ${apVendor.label}`;
 
-      document.getElementById("modalBadge").innerHTML = `${getAuthBadge(ap.auth)} ${getWifiGenBadge(ap.wifiStd, ap.isMlo)} ${getMeshBadge(ap.mesh)}`;
+      const evilTwins = detectEvilTwinBssids();
+      const meshCluster = getMeshClusterForAp(ap, evilTwins);
+      document.getElementById("modalBadge").innerHTML = `${getAuthBadge(ap.auth)} ${getWifiGenBadge(ap.wifiStd, ap.isMlo)} ${getMeshBadge(ap, meshCluster)}`;
 
       const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
       const barColor = ap.rssi >= -65 ? "bg-emerald-400" : ap.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
@@ -1979,28 +2006,40 @@
         : ((ap.mesh & 0x01)
           ? (((ap.mesh & 0x02) && (ap.mesh & 0x04)) ? "Mesh FH+BH" : ((ap.mesh & 0x04) ? "Mesh BH" : ((ap.mesh & 0x02) ? "Mesh FH" : "EasyMesh")))
           : "");
-      const sameEssNodes = (ap.ssid && ap.ssid !== "[Hidden SSID]")
-        ? Array.from(discoveredAps.values()).filter(a => a.ssid === ap.ssid && a.auth === ap.auth).length
-        : 1;
       const roamList = [];
       if (apCaps & 0x20) roamList.push("11k");
       if (apCaps & 0x40) roamList.push("11v");
       if (apCaps & 0x80) roamList.push("11r");
+      const mdidHex = (ap.mdid || 0) > 0 ? `MDID 0x${ap.mdid.toString(16).toUpperCase().padStart(4, '0')}` : "";
       const regParts = [];
       if (ap.country) regParts.push(escapeHtml(ap.country));
       if (ap.maxTxPower > 0) regParts.push(`${ap.maxTxPower} dBm`);
       const roamRegLabel = [
         meshRole,
-        sameEssNodes > 1 ? `${sameEssNodes} nodes` : "",
         roamList.length ? roamList.join("/") : "",
+        mdidHex,
         regParts.length ? regParts.join(" · ") : ""
       ].filter(Boolean).join(" · ") || "--";
       const utilValid = ap.channelUtil !== undefined && ap.channelUtil >= 0;
       const utilColor = !utilValid ? "text-slate-500" : (ap.channelUtil >= 70 ? "text-rose-400" : (ap.channelUtil >= 40 ? "text-amber-400" : "text-emerald-400"));
-      const isEvilTwin = detectEvilTwinBssids().has(ap.bssid);
+      const isEvilTwin = evilTwins.has(ap.bssid);
       const evilBanner = isEvilTwin
         ? `<div class="p-2 rounded bg-rose-950/70 border border-rose-700 text-rose-200 text-[11px] font-semibold">EVIL TWIN WARNING: Same SSID is broadcast elsewhere with WPA2/WPA3, but this BSSID uses ${escapeHtml(ap.auth)}.</div>`
         : '';
+      const meshNodesHtml = meshCluster.length > 1 ? `
+        <div class="mt-2 p-2 rounded bg-[#090c13] border border-teal-900/60">
+          <div class="text-[10px] text-teal-400 font-semibold uppercase mb-1.5">Mesh / ESS Nodes (${meshCluster.length} detected on 2.4 GHz)</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${meshCluster.map(n => {
+              const isSelf = n.bssid === ap.bssid;
+              const cls = isSelf
+                ? 'bg-teal-950 text-teal-200 border-teal-600 font-bold'
+                : 'bg-[#101521] hover:bg-[#182033] text-slate-300 border-[#232b3d] cursor-pointer';
+              return `<button ${isSelf ? 'disabled' : `data-mesh-bssid="${escapeHtml(n.bssid)}"`} class="px-2 py-0.5 rounded text-[10px] border transition ${cls}" title="${escapeHtml(n.bssid)}">${escapeHtml(n.bssid.slice(-8))} · Ch ${n.ch} · ${n.rssi} dBm${isSelf ? ' (this)' : ''}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      ` : '';
 
       modalBodyEl.innerHTML = `
         ${evilBanner}
@@ -2045,6 +2084,7 @@
         <div class="w-full bg-[#1b202e] h-1.5 rounded overflow-hidden mt-1">
           <div class="${barColor} h-full" style="width: ${quality}%"></div>
         </div>
+        ${meshNodesHtml}
         ${clientsHtml}
       `;
       if (!showOverlay) modalBodyEl.scrollTop = prevScrollTop;
@@ -2267,7 +2307,7 @@
               <div class="flex items-center space-x-2">
                 <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
                 ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}
-                ${getMeshBadge(ap.mesh)}
+                ${getMeshBadge(ap, getMeshClusterForAp(ap, evilTwins))}
                 ${evilPill}
               </div>
             </td>
@@ -2444,6 +2484,13 @@
 
     document.getElementById('wifiSearchInput').addEventListener('input', renderWifiTable);
     document.getElementById('bleSearchInput').addEventListener('input', renderBleTable);
+    document.getElementById('modalBody').addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('button[data-mesh-bssid]');
+      if (btn) {
+        e.preventDefault();
+        openApModal(btn.dataset.meshBssid);
+      }
+    });
 
     function escapeHtml(str) {
       if (!str) return '';

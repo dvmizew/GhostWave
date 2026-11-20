@@ -165,14 +165,14 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         }
     }
 
-    for (uint8_t i = 0; i < snapshot.apCount && i < MAX_DISCOVERED_APS && static_cast<size_t>(offset) + 256 < maxLen; i++) {
+    for (uint8_t i = 0; i < snapshot.apCount && i < MAX_DISCOVERED_APS && static_cast<size_t>(offset) + 272 < maxLen; i++) {
         const WifiApRecord &ap = snapshot.apList[i];
         char cleanSsid[33];
         char cleanWps[24];
         sanitizeJsonStr(ap.ssid, cleanSsid, sizeof(cleanSsid));
         sanitizeJsonStr(ap.wpsModel, cleanWps, sizeof(cleanWps));
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\",\"sta\":%u,\"wifi\":%u,\"mlo\":%s,\"util\":%d,\"caps\":%u,\"mesh\":%u,\"cc\":\"%s\",\"txp\":%d,\"wps\":\"%s\"}",
+            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\",\"sta\":%u,\"wifi\":%u,\"mlo\":%s,\"util\":%d,\"caps\":%u,\"mesh\":%u,\"mdid\":%u,\"cc\":\"%s\",\"txp\":%d,\"wps\":\"%s\"}",
             (i == 0) ? "" : ",",
             cleanSsid,
             ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
@@ -182,6 +182,7 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
             (ap.channelUtil == 0xFF) ? -1 : static_cast<int>(ap.channelUtil),
             ap.caps,
             ap.mesh,
+            ap.mdid,
             ap.country,
             ap.maxTxPower,
             cleanWps);

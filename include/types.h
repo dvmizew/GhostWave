@@ -69,6 +69,7 @@ struct WifiApRecord {
     uint8_t  channelUtil;                                    // QBSS Load Channel Utilization 0..100% (0xFF = not advertised)
     uint8_t  caps;                                           // Bitmask of WIFI_AP_CAP_*
     uint8_t  mesh;                                           // Bitmask of WIFI_AP_MESH_*
+    uint16_t mdid;                                           // IEEE 802.11r Mobility Domain ID (0 = absent)
     char     country[3];                                     // 2-char ISO country code (empty if absent)
     int8_t   maxTxPower;                                     // Country IE max TX power in dBm (0 = unknown)
     char     wpsModel[24];                                   // WPS Model/Device/Manufacturer string (empty if absent)
