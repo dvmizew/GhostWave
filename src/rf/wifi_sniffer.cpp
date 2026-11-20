@@ -48,24 +48,199 @@ static inline uint32_t getNowMs() {
     return static_cast<uint32_t>(esp_timer_get_time() / 1000);
 }
 
-static inline bool isKnownAp(const uint8_t *mac) {
+static inline int8_t findApIndexByBssid(const uint8_t *bssid) {
     for (uint8_t i = 0; i < s_ap_count; i++) {
-        if (memcmp(s_ap_records[i].record.bssid, mac, 6) == 0) {
-            return true;
+        if (memcmp(s_ap_records[i].record.bssid, bssid, 6) == 0) {
+            return static_cast<int8_t>(i);
         }
     }
-    return false;
+    return -1;
 }
 
-void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
+static inline bool isKnownAp(const uint8_t *mac) {
+    return findApIndexByBssid(mac) >= 0;
+}
+
+static inline bool isValidUnicastMac(const uint8_t *mac) {
+    return (mac != nullptr) &&
+           ((mac[0] & 0x01) == 0) &&
+           ((mac[0] | mac[1] | mac[2] | mac[3] | mac[4] | mac[5]) != 0);
+}
+
+static inline void parseSsidIe(const uint8_t *data, uint8_t elen, char *outBuf) {
+    uint8_t copyLen = (elen > 32) ? 32 : elen;
+    bool allZero = true;
+    for (uint8_t i = 0; i < copyLen; i++) {
+        if (data[i] != 0) {
+            allZero = false;
+            break;
+        }
+    }
+    if (allZero) return;
+    for (uint8_t i = 0; i < copyLen; i++) {
+        char c = static_cast<char>(data[i]);
+        outBuf[i] = (c >= 32 && c <= 126) ? c : '?';
+    }
+    outBuf[copyLen] = '\0';
+}
+
+static inline uint8_t computePhyRateMbps(const wifi_pkt_rx_ctrl_t &rx) {
+    if (rx.sig_mode == 1) { // HT (802.11n) 1SS MCS 0..7
+        static const uint8_t kHt20Lgi[8] = {7, 13, 20, 26, 39, 52, 59, 65};
+        static const uint8_t kHt20Sgi[8] = {7, 14, 22, 29, 43, 58, 65, 72};
+        static const uint8_t kHt40Lgi[8] = {14, 27, 41, 54, 81, 108, 122, 135};
+        static const uint8_t kHt40Sgi[8] = {15, 30, 45, 60, 90, 120, 135, 150};
+        uint8_t mcsIdx = rx.mcs & 0x07;
+        if (rx.cwb) {
+            return rx.sgi ? kHt40Sgi[mcsIdx] : kHt40Lgi[mcsIdx];
+        }
+        return rx.sgi ? kHt20Sgi[mcsIdx] : kHt20Lgi[mcsIdx];
+    }
+    if (rx.sig_mode == 0) { // Legacy 802.11b/g
+        switch (rx.rate) {
+            case 0x00: return 1;
+            case 0x01: case 0x05: return 2;
+            case 0x02: case 0x06: return 6;  // 5.5 Mbps rounded
+            case 0x03: case 0x07: return 11;
+            case 0x0B: return 6;
+            case 0x0F: return 9;
+            case 0x0A: return 12;
+            case 0x0E: return 18;
+            case 0x09: return 24;
+            case 0x0D: return 36;
+            case 0x08: return 48;
+            case 0x0C: return 54;
+            default: return 0;
+        }
+    }
+    return 0;
+}
+
+// Upserts an associated Wi-Fi client inside s_wifi_mux critical section
+static inline void upsertAssociatedClient(
+    const uint8_t *clientMac,
+    const uint8_t *apMac,
+    uint8_t ch,
+    int8_t rssi,
+    bool isClientTx,
+    const wifi_pkt_rx_ctrl_t &rx,
+    uint16_t l2Bytes,
+    bool isRetry,
+    bool hasPwrMgt,
+    bool pwrSave,
+    bool isEncrypted,
+    bool isQos,
+    uint8_t observedStd,
+    uint8_t extraFlags,
+    uint32_t nowMs)
+{
+    if (isKnownAp(clientMac)) return;
+
+    uint8_t idx = MAX_DISCOVERED_CLIENTS;
+    for (uint8_t i = 0; i < s_client_count; i++) {
+        if (memcmp(s_client_records[i].record.mac, clientMac, 6) == 0) {
+            idx = i;
+            break;
+        }
+    }
+
+    if (idx == MAX_DISCOVERED_CLIENTS) {
+        if (s_client_count < MAX_DISCOVERED_CLIENTS) {
+            idx = s_client_count++;
+        } else {
+            idx = 0;
+            uint32_t oldestTime = s_client_records[0].lastSeenMs;
+            for (uint8_t i = 1; i < MAX_DISCOVERED_CLIENTS; i++) {
+                if (s_client_records[i].lastSeenMs < oldestTime) {
+                    oldestTime = s_client_records[i].lastSeenMs;
+                    idx = i;
+                }
+            }
+        }
+        memset(&s_client_records[idx].record, 0, sizeof(WifiClientRecord));
+    }
+
+    WifiClientRecord &rec = s_client_records[idx].record;
+    // Initialize new slot or reset per-link stats when client roams to a different BSSID
+    if (memcmp(rec.bssid, apMac, 6) != 0) {
+        uint8_t keepStd = rec.wifiStd;
+        memset(&rec, 0, sizeof(WifiClientRecord));
+        memcpy(rec.mac, clientMac, 6);
+        memcpy(rec.bssid, apMac, 6);
+        rec.rssi = -128;
+        rec.flags = ((clientMac[0] & 0x02) != 0) ? WIFI_CLI_FLAG_RANDOM_MAC : 0;
+        rec.wifiStd = keepStd;
+    }
+
+    int8_t apIdx = findApIndexByBssid(apMac);
+    bool isOffChannelBleed = (apIdx >= 0 && s_ap_records[apIdx].record.channel >= 1 &&
+                              s_ap_records[apIdx].record.channel <= GHOSTWAVE_WIFI_CHANNELS &&
+                              s_ap_records[apIdx].record.channel != ch);
+
+    if (!isOffChannelBleed) {
+        rec.channel = ch;
+    } else if (rec.channel == 0) {
+        rec.channel = s_ap_records[apIdx].record.channel;
+    }
+    s_client_records[idx].lastSeenMs = nowMs;
+
+    if (isClientTx) {
+        if (!isOffChannelBleed || !(rec.flags & WIFI_CLI_FLAG_TX_RSSI)) {
+            rec.rssi = rssi;
+            rec.flags |= WIFI_CLI_FLAG_TX_RSSI;
+        }
+        // Keep phyMode, mcs, and maxRateMbps atomically consistent from the peak-rate frame
+        uint8_t rateMbps = computePhyRateMbps(rx);
+        if (rateMbps > rec.maxRateMbps || (rateMbps == rec.maxRateMbps && rx.sig_mode > rec.phyMode)) {
+            rec.maxRateMbps = rateMbps;
+            rec.phyMode = rx.sig_mode;
+            rec.mcs = (rx.sig_mode == 1) ? (rx.mcs & 0x07) : 0;
+        }
+        if (rx.sig_mode == 1) {
+            if (rx.cwb) rec.flags |= WIFI_CLI_FLAG_40MHZ;
+            if (rx.sgi) rec.flags |= WIFI_CLI_FLAG_SGI;
+            if (observedStd < 4) observedStd = 4;
+        }
+        // Note: Do NOT infer Wi-Fi 1 (802.11b/g) from sig_mode == 0; Wi-Fi 6/7 devices
+        // routinely transmit 1 Mbps Null/QoS-Null power-save frames.
+        if (hasPwrMgt) {
+            if (pwrSave) rec.flags |= WIFI_CLI_FLAG_PWRSAVE;
+            else rec.flags &= ~WIFI_CLI_FLAG_PWRSAVE;
+        }
+        if (rec.txPkts < 65535) rec.txPkts++;
+        rec.txBytes += l2Bytes;
+        if (isRetry && rec.retryPkts < 65535) rec.retryPkts++;
+    } else {
+        // AP -> Client: never overwrite true Client TX RSSI; refresh downlink RSSI on-channel
+        if (!(rec.flags & WIFI_CLI_FLAG_TX_RSSI) && (!isOffChannelBleed || rec.rssi <= -128)) {
+            rec.rssi = rssi;
+        }
+        if (rec.rxPkts < 65535) rec.rxPkts++;
+        rec.rxBytes += l2Bytes;
+    }
+
+    if (isEncrypted) rec.flags |= WIFI_CLI_FLAG_ENCRYPTED;
+    if (isQos)       rec.flags |= WIFI_CLI_FLAG_QOS;
+    rec.flags |= extraFlags;
+
+    if (observedStd > rec.wifiStd) {
+        rec.wifiStd = observedStd;
+    }
+}
+
+void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
     if (type == WIFI_PKT_MGMT || type == WIFI_PKT_DATA) {
         const wifi_promiscuous_pkt_t *pkt = reinterpret_cast<const wifi_promiscuous_pkt_t *>(buf);
+        if (pkt->rx_ctrl.rx_state != 0) {
+            return; // Drop frames with FCS/PHY errors to prevent phantom MACs
+        }
         int8_t rssi = pkt->rx_ctrl.rssi;
         int8_t noise = pkt->rx_ctrl.noise_floor;
-        uint8_t ch = s_current_channel;
+        uint8_t rxCh = pkt->rx_ctrl.channel;
+        uint8_t ch = (rxCh >= 1 && rxCh <= GHOSTWAVE_WIFI_CHANNELS) ? rxCh : s_current_channel;
 
         if (ch >= 1 && ch <= GHOSTWAVE_WIFI_CHANNELS) {
-            portENTER_CRITICAL_ISR(&s_wifi_mux);
+            portENTER_CRITICAL(&s_wifi_mux);
             s_wifi_pkts_temp[ch - 1] = s_wifi_pkts_temp[ch - 1] + 1;
             if (rssi > s_wifi_rssi_temp[ch - 1]) {
                 s_wifi_rssi_temp[ch - 1] = rssi;
@@ -73,13 +248,13 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
             if (noise != 0) {
                 s_wifi_noise_temp[ch - 1] = noise;
             }
-            portEXIT_CRITICAL_ISR(&s_wifi_mux);
+            portEXIT_CRITICAL(&s_wifi_mux);
         }
 
         uint32_t nowMs = getNowMs();
 
         // 1. Management Frames
-        if (type == WIFI_PKT_MGMT && pkt->rx_ctrl.sig_len >= sizeof(wifi_mgmt_hdr_t)) {
+        if (type == WIFI_PKT_MGMT && pkt->rx_ctrl.sig_len >= sizeof(wifi_mgmt_hdr_t) + 4) {
             const uint8_t *payload = pkt->payload;
             const wifi_mgmt_hdr_t *hdr = reinterpret_cast<const wifi_mgmt_hdr_t *>(payload);
             uint8_t subtype = (hdr->frame_ctrl >> 4) & 0x0F;
@@ -88,93 +263,75 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
             // 1a. Deauth & Disassociation frames (Subtype 12 = Deauth, 10 = Disassoc)
             if (subtype == 12 || subtype == 10) {
                 if (ch >= 1 && ch <= GHOSTWAVE_WIFI_CHANNELS) {
-                    portENTER_CRITICAL_ISR(&s_wifi_mux);
+                    portENTER_CRITICAL(&s_wifi_mux);
                     s_wifi_deauth_temp[ch - 1] = s_wifi_deauth_temp[ch - 1] + 1;
-                    portEXIT_CRITICAL_ISR(&s_wifi_mux);
+                    portEXIT_CRITICAL(&s_wifi_mux);
                 }
             }
-            // 1b. Client Management Frames: Probe Request (4), Assoc Request (0), Reassoc Request (2)
-            else if (subtype == 4 || subtype == 0 || subtype == 2) {
-                if ((hdr->addr2[0] & 0x01) == 0 &&
-                    (hdr->addr2[0] | hdr->addr2[1] | hdr->addr2[2] | hdr->addr2[3] | hdr->addr2[4] | hdr->addr2[5]) != 0) {
-                    char probedSsid[33] = {0};
-                    uint16_t pos = (subtype == 4) ? 24 : 28; // Probe Req IEs begin at 24, Assoc Req IEs at 28
-                    const uint8_t *assocAp = (subtype == 0 || subtype == 2) ? hdr->addr1 : nullptr;
+            // 1b. Client Association / Reassociation Request (0, 2) & Authentication (11)
+            // Strictly ignores unassociated Probe Requests (subtype 4)
+            else if (subtype == 0 || subtype == 2 || subtype == 11) {
+                const uint8_t *clientMac = nullptr;
+                const uint8_t *apMac = nullptr;
+                bool isClientTx = false;
 
-                    while (pos + 1 < len) {
-                        uint8_t id = payload[pos];
-                        uint8_t elen = payload[pos + 1];
-                        if (pos + 2 + elen > len) break;
+                if ((subtype == 0 || subtype == 2) && memcmp(hdr->addr1, hdr->addr3, 6) == 0) {
+                    clientMac = hdr->addr2;
+                    apMac = hdr->addr1;
+                    isClientTx = true;
+                } else if (subtype == 11) {
+                    // Auth is bidirectional: BSSID is always in addr3
+                    if (memcmp(hdr->addr1, hdr->addr3, 6) == 0) {
+                        clientMac = hdr->addr2;
+                        apMac = hdr->addr1;
+                        isClientTx = true;
+                    } else if (memcmp(hdr->addr2, hdr->addr3, 6) == 0) {
+                        clientMac = hdr->addr1;
+                        apMac = hdr->addr2;
+                        isClientTx = false;
+                    }
+                }
 
-                        if (id == 0) { // SSID
-                            uint8_t copyLen = elen;
-                            if (copyLen > 32) copyLen = 32;
-                            for (uint8_t i = 0; i < copyLen; i++) {
-                                char c = static_cast<char>(payload[pos + 2 + i]);
-                                probedSsid[i] = (c >= 32 && c <= 126) ? c : '?';
+                if (isValidUnicastMac(clientMac) && isValidUnicastMac(apMac)) {
+                    uint8_t cliStd = 0;
+                    uint8_t extraFlags = 0;
+
+                    if (subtype == 0 || subtype == 2) {
+                        // Assoc Req IEs start at 28 (24B hdr + 2B cap + 2B listen);
+                        // Reassoc Req IEs start at 34 (+ 6B current AP MAC)
+                        uint16_t pos = (subtype == 0) ? 28 : 34;
+                        while (pos + 1 < len) {
+                            uint8_t id = payload[pos];
+                            uint8_t elen = payload[pos + 1];
+                            if (pos + 2 + elen > len) break;
+
+                            if (id == 45 && elen >= 2) { // HT Capabilities -> Wi-Fi 4
+                                if (cliStd < 4) cliStd = 4;
+                                uint16_t htCap = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
+                                if (htCap & 0x0002) extraFlags |= WIFI_CLI_FLAG_40MHZ;
+                                if (htCap & 0x0060) extraFlags |= WIFI_CLI_FLAG_SGI;
+                            } else if (id == 191) { // VHT Capabilities -> Wi-Fi 5
+                                if (cliStd < 5) cliStd = 5;
+                            } else if (id == 255 && elen >= 1) {
+                                uint8_t extId = payload[pos + 2];
+                                if (extId == 35 && cliStd < 6) { // HE Capabilities -> Wi-Fi 6
+                                    cliStd = 6;
+                                } else if (extId == 108 || extId == 107) { // EHT / Multi-Link -> Wi-Fi 7
+                                    cliStd = 7;
+                                }
                             }
-                            probedSsid[copyLen] = '\0';
-                            break;
+                            pos += 2 + elen;
                         }
-                        pos += 2 + elen;
                     }
 
-                    portENTER_CRITICAL_ISR(&s_wifi_mux);
-                    if (!isKnownAp(hdr->addr2)) {
-                        bool found = false;
-                        for (uint8_t i = 0; i < s_client_count; i++) {
-                            if (memcmp(s_client_records[i].record.mac, hdr->addr2, 6) == 0) {
-                                found = true;
-                                s_client_records[i].record.rssi = rssi;
-                                s_client_records[i].record.channel = ch;
-                                s_client_records[i].lastSeenMs = nowMs;
-                                if (assocAp != nullptr) {
-                                    memcpy(s_client_records[i].record.bssid, assocAp, 6);
-                                }
-                                if (probedSsid[0] != '\0' && s_client_records[i].record.probedSsid[0] == '\0') {
-                                    strncpy(s_client_records[i].record.probedSsid, probedSsid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                                    s_client_records[i].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                                }
-                                break;
-                            }
-                        }
-                        if (!found && s_client_count < MAX_DISCOVERED_CLIENTS) {
-                            memcpy(s_client_records[s_client_count].record.mac, hdr->addr2, 6);
-                            if (assocAp != nullptr) {
-                                memcpy(s_client_records[s_client_count].record.bssid, assocAp, 6);
-                            } else {
-                                memset(s_client_records[s_client_count].record.bssid, 0, 6);
-                            }
-                            strncpy(s_client_records[s_client_count].record.probedSsid, probedSsid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                            s_client_records[s_client_count].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                            s_client_records[s_client_count].record.channel = ch;
-                            s_client_records[s_client_count].record.rssi = rssi;
-                            s_client_records[s_client_count].lastSeenMs = nowMs;
-                            s_client_count++;
-                        } else if (!found && s_client_count >= MAX_DISCOVERED_CLIENTS) {
-                            // Replace oldest entry
-                            uint8_t oldestIdx = 0;
-                            uint32_t oldestTime = s_client_records[0].lastSeenMs;
-                            for (uint8_t i = 1; i < MAX_DISCOVERED_CLIENTS; i++) {
-                                if (s_client_records[i].lastSeenMs < oldestTime) {
-                                    oldestTime = s_client_records[i].lastSeenMs;
-                                    oldestIdx = i;
-                                }
-                            }
-                            memcpy(s_client_records[oldestIdx].record.mac, hdr->addr2, 6);
-                            if (assocAp != nullptr) {
-                                memcpy(s_client_records[oldestIdx].record.bssid, assocAp, 6);
-                            } else {
-                                memset(s_client_records[oldestIdx].record.bssid, 0, 6);
-                            }
-                            strncpy(s_client_records[oldestIdx].record.probedSsid, probedSsid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                            s_client_records[oldestIdx].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                            s_client_records[oldestIdx].record.channel = ch;
-                            s_client_records[oldestIdx].record.rssi = rssi;
-                            s_client_records[oldestIdx].lastSeenMs = nowMs;
-                        }
-                    }
-                    portEXIT_CRITICAL_ISR(&s_wifi_mux);
+                    bool isRetry = ((hdr->frame_ctrl >> 11) & 0x01) != 0;
+                    bool pwrSave = ((hdr->frame_ctrl >> 12) & 0x01) != 0;
+                    portENTER_CRITICAL(&s_wifi_mux);
+                    upsertAssociatedClient(
+                        clientMac, apMac, ch, rssi,
+                        isClientTx, pkt->rx_ctrl, len, isRetry,
+                        isClientTx, pwrSave, false, false, cliStd, extraFlags, nowMs);
+                    portEXIT_CRITICAL(&s_wifi_mux);
                 }
             }
             // 1c. Beacon (Subtype 8) & Probe Response (Subtype 5)
@@ -188,6 +345,7 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                     uint16_t pos = 36;
                     uint8_t realCh = ch;
                     uint16_t staCount = 0;
+                    bool hasBssLoad = false;
                     bool isHt = false;
                     bool isVht = false;
                     bool isHe = false;
@@ -213,16 +371,11 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                         uint8_t elen = payload[pos + 1];
                         if (pos + 2 + elen > len) break;
 
-                        if (id == 0 && ssidBuf[0] == '\0') { // SSID
-                            uint8_t copyLen = elen;
-                            if (copyLen > 32) copyLen = 32;
-                            for (uint8_t i = 0; i < copyLen; i++) {
-                                char c = static_cast<char>(payload[pos + 2 + i]);
-                                ssidBuf[i] = (c >= 32 && c <= 126) ? c : '?';
-                            }
-                            ssidBuf[copyLen] = '\0';
+                        if (id == 0 && elen > 0 && ssidBuf[0] == '\0') { // SSID
+                            parseSsidIe(&payload[pos + 2], elen, ssidBuf);
                         } else if (id == 11 && elen >= 2) { // BSS Load Element: Station Count
                             staCount = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
+                            hasBssLoad = true;
                         } else if (id == 3 && elen >= 1) { // DS Parameter Set: primary channel (1..14)
                             uint8_t c = payload[pos + 2];
                             if (c >= 1 && c <= 14) {
@@ -320,17 +473,20 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                             }
                         } else if (id == 48 && elen >= 8) { // RSN IE (WPA2 / WPA3)
                             auth = AUTH_WPA2;
+                            uint32_t elemEnd = static_cast<uint32_t>(pos) + 2U + elen;
                             uint16_t pairwiseCount = payload[pos + 8] | (static_cast<uint16_t>(payload[pos + 9]) << 8);
-                            uint16_t akmOffset = pos + 10 + (pairwiseCount * 4);
-                            if (akmOffset + 2 <= pos + 2 + elen) {
+                            uint32_t akmOffset = static_cast<uint32_t>(pos) + 10U + (static_cast<uint32_t>(pairwiseCount) * 4U);
+                            if (akmOffset + 2U <= elemEnd) {
                                 uint16_t akmCount = payload[akmOffset] | (static_cast<uint16_t>(payload[akmOffset + 1]) << 8);
-                                uint16_t suitesStart = akmOffset + 2;
-                                for (uint16_t k = 0; k < akmCount && (suitesStart + (k * 4) + 4) <= (pos + 2 + elen); k++) {
-                                    if (payload[suitesStart + (k * 4)] == 0x00 &&
-                                        payload[suitesStart + (k * 4) + 1] == 0x0F &&
-                                        payload[suitesStart + (k * 4) + 2] == 0xAC) {
-                                        uint8_t suiteType = payload[suitesStart + (k * 4) + 3];
-                                        if (suiteType == 8 || suiteType == 24) {
+                                uint32_t suitesStart = akmOffset + 2U;
+                                for (uint16_t k = 0; k < akmCount && (suitesStart + (static_cast<uint32_t>(k) * 4U) + 4U) <= elemEnd; k++) {
+                                    uint32_t sOff = suitesStart + (static_cast<uint32_t>(k) * 4U);
+                                    if (payload[sOff] == 0x00 &&
+                                        payload[sOff + 1] == 0x0F &&
+                                        payload[sOff + 2] == 0xAC) {
+                                        uint8_t suiteType = payload[sOff + 3];
+                                        // 8=SAE, 9=FT-SAE, 12=Suite-B-192, 24=SAE-EXT-KEY
+                                        if (suiteType == 8 || suiteType == 9 || suiteType == 12 || suiteType == 24) {
                                             auth = AUTH_WPA3;
                                             break;
                                         }
@@ -375,176 +531,102 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                         wifiStd = 1;
                     }
 
-                    if (ssidBuf[0] != '\0' || subtype == 8) {
-                        portENTER_CRITICAL_ISR(&s_wifi_mux);
-                        bool found = false;
-                        for (uint8_t i = 0; i < s_ap_count; i++) {
-                            if (memcmp(s_ap_records[i].record.bssid, hdr->addr3, 6) == 0) {
-                                found = true;
-                                s_ap_records[i].record.rssi = rssi;
-                                s_ap_records[i].record.channel = realCh;
-                                s_ap_records[i].record.authMode = auth;
-                                if (staCount > 0) s_ap_records[i].record.staCount = staCount;
-                                if (wifiStd > s_ap_records[i].record.wifiStd) {
-                                    s_ap_records[i].record.wifiStd = wifiStd;
-                                }
-                                if (subtype == 8 || isMlo) {
-                                    s_ap_records[i].record.mlo = isMlo;
-                                }
-                                s_ap_records[i].lastSeenMs = nowMs;
-                                if (s_ap_records[i].record.ssid[0] == '\0' && ssidBuf[0] != '\0') {
-                                    strncpy(s_ap_records[i].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
-                                    s_ap_records[i].record.ssid[sizeof(s_ap_records[0].record.ssid) - 1] = '\0';
-                                }
-                                break;
+                    if ((ssidBuf[0] != '\0' || subtype == 8) && isValidUnicastMac(hdr->addr3)) {
+                        portENTER_CRITICAL(&s_wifi_mux);
+                        int8_t apIdx = findApIndexByBssid(hdr->addr3);
+                        if (apIdx >= 0) {
+                            WifiApEntry &entry = s_ap_records[apIdx];
+                            // Avoid adjacent-channel bleed-through corrupting on-channel RSSI
+                            if (ch == realCh || entry.record.rssi <= -128) {
+                                entry.record.rssi = rssi;
                             }
-                        }
-                        if (!found && s_ap_count < MAX_DISCOVERED_APS) {
-                            strncpy(s_ap_records[s_ap_count].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
-                            s_ap_records[s_ap_count].record.ssid[sizeof(s_ap_records[0].record.ssid) - 1] = '\0';
-                            memcpy(s_ap_records[s_ap_count].record.bssid, hdr->addr3, 6);
-                            s_ap_records[s_ap_count].record.channel = realCh;
-                            s_ap_records[s_ap_count].record.rssi = rssi;
-                            s_ap_records[s_ap_count].record.authMode = auth;
-                            s_ap_records[s_ap_count].record.staCount = staCount;
-                            s_ap_records[s_ap_count].record.wifiStd = wifiStd;
-                            s_ap_records[s_ap_count].record.mlo = isMlo;
-                            s_ap_records[s_ap_count].lastSeenMs = nowMs;
-                            s_ap_count++;
-                        } else if (!found && s_ap_count >= MAX_DISCOVERED_APS) {
-                            uint8_t oldestIdx = 0;
-                            uint32_t oldestTime = s_ap_records[0].lastSeenMs;
-                            for (uint8_t i = 1; i < MAX_DISCOVERED_APS; i++) {
-                                if (s_ap_records[i].lastSeenMs < oldestTime) {
-                                    oldestTime = s_ap_records[i].lastSeenMs;
-                                    oldestIdx = i;
+                            entry.record.channel = realCh;
+                            if (subtype == 8 || auth > entry.record.authMode) {
+                                entry.record.authMode = auth;
+                            }
+                            if (hasBssLoad) entry.record.staCount = staCount;
+                            if (wifiStd > entry.record.wifiStd) {
+                                entry.record.wifiStd = wifiStd;
+                            }
+                            if (subtype == 8 || isMlo) {
+                                entry.record.mlo = isMlo;
+                            }
+                            entry.lastSeenMs = nowMs;
+                            if (entry.record.ssid[0] == '\0' && ssidBuf[0] != '\0') {
+                                strncpy(entry.record.ssid, ssidBuf, sizeof(entry.record.ssid) - 1);
+                                entry.record.ssid[sizeof(entry.record.ssid) - 1] = '\0';
+                            }
+                        } else {
+                            uint8_t idx = 0;
+                            if (s_ap_count < MAX_DISCOVERED_APS) {
+                                idx = s_ap_count++;
+                            } else {
+                                uint32_t oldestTime = s_ap_records[0].lastSeenMs;
+                                for (uint8_t i = 1; i < MAX_DISCOVERED_APS; i++) {
+                                    if (s_ap_records[i].lastSeenMs < oldestTime) {
+                                        oldestTime = s_ap_records[i].lastSeenMs;
+                                        idx = i;
+                                    }
                                 }
                             }
-                            strncpy(s_ap_records[oldestIdx].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
-                            s_ap_records[oldestIdx].record.ssid[sizeof(s_ap_records[0].record.ssid) - 1] = '\0';
-                            memcpy(s_ap_records[oldestIdx].record.bssid, hdr->addr3, 6);
-                            s_ap_records[oldestIdx].record.channel = realCh;
-                            s_ap_records[oldestIdx].record.rssi = rssi;
-                            s_ap_records[oldestIdx].record.authMode = auth;
-                            s_ap_records[oldestIdx].record.staCount = staCount;
-                            s_ap_records[oldestIdx].record.wifiStd = wifiStd;
-                            s_ap_records[oldestIdx].record.mlo = isMlo;
-                            s_ap_records[oldestIdx].lastSeenMs = nowMs;
+                            strncpy(s_ap_records[idx].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
+                            s_ap_records[idx].record.ssid[sizeof(s_ap_records[0].record.ssid) - 1] = '\0';
+                            memcpy(s_ap_records[idx].record.bssid, hdr->addr3, 6);
+                            s_ap_records[idx].record.channel = realCh;
+                            s_ap_records[idx].record.rssi = rssi;
+                            s_ap_records[idx].record.authMode = auth;
+                            s_ap_records[idx].record.staCount = staCount;
+                            s_ap_records[idx].record.wifiStd = wifiStd;
+                            s_ap_records[idx].record.mlo = isMlo;
+                            s_ap_records[idx].lastSeenMs = nowMs;
                         }
-                        portEXIT_CRITICAL_ISR(&s_wifi_mux);
+                        portEXIT_CRITICAL(&s_wifi_mux);
                     }
                 }
             }
         }
 
-        // 2. Active Client Detection from Data Frames
-        else if (type == WIFI_PKT_DATA && pkt->rx_ctrl.sig_len >= sizeof(wifi_mgmt_hdr_t)) {
+        // 2. Associated Client Detection from Data Frames (Infrastructure BSS only)
+        else if (type == WIFI_PKT_DATA && pkt->rx_ctrl.sig_len >= sizeof(wifi_mgmt_hdr_t) + 4) {
             const uint8_t *payload = pkt->payload;
             const wifi_mgmt_hdr_t *hdr = reinterpret_cast<const wifi_mgmt_hdr_t *>(payload);
 
-            uint8_t toDs = (hdr->frame_ctrl >> 8) & 0x01;
-            uint8_t fromDs = (hdr->frame_ctrl >> 9) & 0x01;
+            uint16_t fc = hdr->frame_ctrl;
+            uint8_t subtype = (fc >> 4) & 0x0F;
+            uint8_t toDs = (fc >> 8) & 0x01;
+            uint8_t fromDs = (fc >> 9) & 0x01;
 
             const uint8_t *clientMac = nullptr;
             const uint8_t *apMac = nullptr;
+            bool isClientTx = false;
 
             if (toDs == 1 && fromDs == 0) {
-                // Client transmitting to AP
+                // Client -> AP (Infrastructure uplink)
                 clientMac = hdr->addr2;
                 apMac = hdr->addr1;
+                isClientTx = true;
             } else if (toDs == 0 && fromDs == 1) {
-                // AP transmitting to Client
+                // AP -> Client (Infrastructure downlink)
                 clientMac = hdr->addr1;
                 apMac = hdr->addr2;
-            } else if (toDs == 0 && fromDs == 0) {
-                // Direct / keepalive / null: addr2 is source, addr3 is BSSID
-                clientMac = hdr->addr2;
-                if ((hdr->addr3[0] & 0x01) == 0 &&
-                    (hdr->addr3[0] | hdr->addr3[1] | hdr->addr3[2] | hdr->addr3[3] | hdr->addr3[4] | hdr->addr3[5]) != 0) {
-                    apMac = hdr->addr3;
-                }
+                isClientTx = false;
             }
+            // Drop ToDS=0,FromDS=0 (IBSS/unassociated) and ToDS=1,FromDS=1 (WDS AP-to-AP)
 
-            if (clientMac != nullptr &&
-                (clientMac[0] & 0x01) == 0 &&
-                (clientMac[0] | clientMac[1] | clientMac[2] | clientMac[3] | clientMac[4] | clientMac[5]) != 0) {
+            if (isValidUnicastMac(clientMac) && isValidUnicastMac(apMac)) {
+                uint16_t l2Bytes = pkt->rx_ctrl.sig_len - 4;
+                bool isRetry = ((fc >> 11) & 0x01) != 0;
+                bool pwrSave = ((fc >> 12) & 0x01) != 0;
+                bool isNullData = (subtype & 0x04) != 0; // Subtype 4 (Null) or 12 (QoS Null)
+                bool isEncrypted = (!isNullData) && (((fc >> 14) & 0x01) != 0);
+                bool isQos = (subtype & 0x08) != 0;      // Subtype 8 (QoS Data) or 12 (QoS Null)
 
-                portENTER_CRITICAL_ISR(&s_wifi_mux);
-                if (!isKnownAp(clientMac)) {
-                    bool found = false;
-                    for (uint8_t i = 0; i < s_client_count; i++) {
-                        if (memcmp(s_client_records[i].record.mac, clientMac, 6) == 0) {
-                            found = true;
-                            s_client_records[i].record.rssi = rssi;
-                            s_client_records[i].record.channel = ch;
-                            s_client_records[i].lastSeenMs = nowMs;
-                            if (apMac != nullptr) {
-                                memcpy(s_client_records[i].record.bssid, apMac, 6);
-                            }
-                            // If AP is known, enrich probedSsid if empty
-                            if (s_client_records[i].record.probedSsid[0] == '\0' && apMac != nullptr) {
-                                for (uint8_t a = 0; a < s_ap_count; a++) {
-                                    if (memcmp(s_ap_records[a].record.bssid, apMac, 6) == 0 && s_ap_records[a].record.ssid[0] != '\0') {
-                                        strncpy(s_client_records[i].record.probedSsid, s_ap_records[a].record.ssid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                                        s_client_records[i].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                                        break;
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                    }
-
-                    if (!found) {
-                        char connSsid[33] = {0};
-                        if (apMac != nullptr) {
-                            for (uint8_t a = 0; a < s_ap_count; a++) {
-                                if (memcmp(s_ap_records[a].record.bssid, apMac, 6) == 0 && s_ap_records[a].record.ssid[0] != '\0') {
-                                    strncpy(connSsid, s_ap_records[a].record.ssid, sizeof(connSsid) - 1);
-                                    connSsid[sizeof(connSsid) - 1] = '\0';
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (s_client_count < MAX_DISCOVERED_CLIENTS) {
-                            memcpy(s_client_records[s_client_count].record.mac, clientMac, 6);
-                            if (apMac != nullptr) {
-                                memcpy(s_client_records[s_client_count].record.bssid, apMac, 6);
-                            } else {
-                                memset(s_client_records[s_client_count].record.bssid, 0, 6);
-                            }
-                            strncpy(s_client_records[s_client_count].record.probedSsid, connSsid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                            s_client_records[s_client_count].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                            s_client_records[s_client_count].record.channel = ch;
-                            s_client_records[s_client_count].record.rssi = rssi;
-                            s_client_records[s_client_count].lastSeenMs = nowMs;
-                            s_client_count++;
-                        } else {
-                            // Replace oldest entry
-                            uint8_t oldestIdx = 0;
-                            uint32_t oldestTime = s_client_records[0].lastSeenMs;
-                            for (uint8_t i = 1; i < MAX_DISCOVERED_CLIENTS; i++) {
-                                if (s_client_records[i].lastSeenMs < oldestTime) {
-                                    oldestTime = s_client_records[i].lastSeenMs;
-                                    oldestIdx = i;
-                                }
-                            }
-                            memcpy(s_client_records[oldestIdx].record.mac, clientMac, 6);
-                            if (apMac != nullptr) {
-                                memcpy(s_client_records[oldestIdx].record.bssid, apMac, 6);
-                            } else {
-                                memset(s_client_records[oldestIdx].record.bssid, 0, 6);
-                            }
-                            strncpy(s_client_records[oldestIdx].record.probedSsid, connSsid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                            s_client_records[oldestIdx].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                            s_client_records[oldestIdx].record.channel = ch;
-                            s_client_records[oldestIdx].record.rssi = rssi;
-                            s_client_records[oldestIdx].lastSeenMs = nowMs;
-                        }
-                    }
-                }
-                portEXIT_CRITICAL_ISR(&s_wifi_mux);
+                portENTER_CRITICAL(&s_wifi_mux);
+                upsertAssociatedClient(
+                    clientMac, apMac, ch, rssi,
+                    isClientTx, pkt->rx_ctrl, l2Bytes, isRetry,
+                    isClientTx, pwrSave, isEncrypted, isQos, 0, 0, nowMs);
+                portEXIT_CRITICAL(&s_wifi_mux);
             }
         }
     }
@@ -574,8 +656,8 @@ void WifiSniffer::stop() {
 
 void WifiSniffer::setChannel(uint8_t channel) {
     if (channel >= 1 && channel <= GHOSTWAVE_WIFI_CHANNELS) {
-        s_current_channel = channel;
         esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+        s_current_channel = channel;
     }
 }
 
@@ -652,10 +734,10 @@ void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *o
         }
     }
 
-    // Prune stale Clients (inactive for > 45 seconds)
+    // Prune stale Clients (inactive for > 45 seconds) and scrub any AP BSSID mistakenly inserted
     uint8_t cliWriteIdx = 0;
     for (uint8_t i = 0; i < s_client_count; i++) {
-        if ((nowMs - s_client_records[i].lastSeenMs) < 45000) {
+        if ((nowMs - s_client_records[i].lastSeenMs) < 45000 && !isKnownAp(s_client_records[i].record.mac)) {
             if (cliWriteIdx != i) {
                 s_client_records[cliWriteIdx] = s_client_records[i];
             }
@@ -664,37 +746,11 @@ void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *o
     }
     s_client_count = cliWriteIdx;
 
-    // Post-sweep enrichment: link clients with AP SSIDs and channels via BSSID / MLO match
+    // Post-sweep enrichment: align client channel with its exact AP channel
     for (uint8_t i = 0; i < s_client_count; i++) {
-        const uint8_t *b = s_client_records[i].record.bssid;
-        bool hasBssid = (b[0] | b[1] | b[2] | b[3] | b[4] | b[5]) != 0;
-        if (hasBssid) {
-            int8_t bestApIdx = -1;
-            // 1. Exact 6-byte BSSID match takes top priority
-            for (uint8_t a = 0; a < s_ap_count; a++) {
-                if (memcmp(s_ap_records[a].record.bssid, b, 6) == 0) {
-                    bestApIdx = a;
-                    break;
-                }
-            }
-            // 2. Secondary fallback: check 5-byte match ONLY if candidate AP is MLO capable
-            if (bestApIdx < 0) {
-                for (uint8_t a = 0; a < s_ap_count; a++) {
-                    if (s_ap_records[a].record.mlo && memcmp(s_ap_records[a].record.bssid + 1, b + 1, 5) == 0) {
-                        bestApIdx = a;
-                        break;
-                    }
-                }
-            }
-            if (bestApIdx >= 0) {
-                if (s_client_records[i].record.probedSsid[0] == '\0' && s_ap_records[bestApIdx].record.ssid[0] != '\0') {
-                    strncpy(s_client_records[i].record.probedSsid, s_ap_records[bestApIdx].record.ssid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                    s_client_records[i].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                }
-                if (s_ap_records[bestApIdx].record.channel >= 1 && s_ap_records[bestApIdx].record.channel <= 14) {
-                    s_client_records[i].record.channel = s_ap_records[bestApIdx].record.channel;
-                }
-            }
+        int8_t bestApIdx = findApIndexByBssid(s_client_records[i].record.bssid);
+        if (bestApIdx >= 0 && s_ap_records[bestApIdx].record.channel >= 1 && s_ap_records[bestApIdx].record.channel <= 14) {
+            s_client_records[i].record.channel = s_ap_records[bestApIdx].record.channel;
         }
     }
 

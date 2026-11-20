@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "config.h"
 
-#define MAX_DISCOVERED_APS      8
+#define MAX_DISCOVERED_APS      16
 #define MAX_DISCOVERED_BLE      8
 #define MAX_DISCOVERED_STATIONS 8
 
@@ -47,16 +47,34 @@ struct WifiApRecord {
     int8_t   rssi;
     uint8_t  authMode;                                       // WifiAuthMode (0=Open, 1=WEP, 2=WPA, 3=WPA2, 4=WPA3)
     uint16_t staCount;                                       // QBSS BSS Load client station count (if reported by AP)
-    uint8_t  wifiStd;                                        // Generation: 0=Legacy b/g, 4=Wi-Fi 4, 5=Wi-Fi 5, 6=Wi-Fi 6, 7=Wi-Fi 7
+    uint8_t  wifiStd;                                        // Generation: 1=Legacy b/g, 4=Wi-Fi 4, 5=Wi-Fi 5, 6=Wi-Fi 6, 7=Wi-Fi 7
     bool     mlo;                                            // Multi-Link Operation (MLO) flag
 };
 
+// Bitmask flags for WifiClientRecord::flags
+#define WIFI_CLI_FLAG_ENCRYPTED   0x01  // Protected (WPA/WPA2/WPA3) data frame seen
+#define WIFI_CLI_FLAG_QOS         0x02  // QoS / WMM Data frame seen
+#define WIFI_CLI_FLAG_PWRSAVE     0x04  // Client currently in 802.11 Power Save (Sleep)
+#define WIFI_CLI_FLAG_TX_RSSI     0x08  // RSSI measured directly from Client TX (ToDS=1)
+#define WIFI_CLI_FLAG_40MHZ       0x10  // 40 MHz channel bandwidth observed or advertised
+#define WIFI_CLI_FLAG_SGI         0x20  // Short Guard Interval observed or advertised
+#define WIFI_CLI_FLAG_RANDOM_MAC  0x40  // Locally Administered (Randomized / Private) MAC
+
 struct WifiClientRecord {
-    char    probedSsid[33];                                 // Probed network SSID or connected AP hint (up to 32 chars)
-    uint8_t mac[6];
-    uint8_t bssid[6];                                       // AP BSSID if connected / communicating (or 0 if unassociated)
-    uint8_t channel;
-    int8_t  rssi;
+    uint8_t  mac[6];                                        // Client STA MAC
+    uint8_t  bssid[6];                                      // Associated AP BSSID (always non-zero)
+    uint8_t  channel;
+    int8_t   rssi;                                          // True Client TX RSSI (-128 until TX_RSSI seen)
+    uint8_t  wifiStd;                                       // Observed client Wi-Fi gen (0=unknown, 4=n, 5=ac, 6=ax, 7=be)
+    uint8_t  phyMode;                                       // rx_ctrl.sig_mode (0=11b/g, 1=HT/11n)
+    uint8_t  mcs;                                           // HT MCS index 0..7 (valid when phyMode==1)
+    uint8_t  maxRateMbps;                                   // Peak observed client TX PHY rate in Mbps (0=unknown)
+    uint8_t  flags;                                         // Bitmask of WIFI_CLI_FLAG_*
+    uint16_t txPkts;                                        // Frames transmitted by client (ToDS=1)
+    uint16_t rxPkts;                                        // Frames received by client (FromDS=1)
+    uint16_t retryPkts;                                     // Client TX retransmitted frames (Retry bit set)
+    uint32_t txBytes;                                       // L2 bytes transmitted by client (sig_len - 4)
+    uint32_t rxBytes;                                       // L2 bytes received by client (sig_len - 4)
 };
 
 struct BleDeviceRecord {
@@ -81,7 +99,7 @@ struct SpectrumSnapshot {
     uint8_t  apCount;                                       // Number of beacon APs discovered in this sweep
     WifiApRecord apList[MAX_DISCOVERED_APS];                // Discovered Wi-Fi networks (SSID, BSSID, Ch, RSSI, Auth)
     uint8_t  clientCount;                                   // Number of client devices discovered in this sweep
-    WifiClientRecord clientList[MAX_DISCOVERED_CLIENTS];    // Discovered Wi-Fi clients (MAC, Probed SSID, Ch, RSSI)
+    WifiClientRecord clientList[MAX_DISCOVERED_CLIENTS];    // Associated Wi-Fi clients
     uint8_t  bleCount;                                      // Number of unique BLE devices discovered
     BleDeviceRecord bleList[MAX_DISCOVERED_BLE];            // Discovered BLE devices (Name, MAC, RSSI)
     uint8_t  stationCount;                                  // Number of active FM carriers detected

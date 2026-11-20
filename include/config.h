@@ -16,7 +16,7 @@
 #define I2C_STANDARD_CLOCK      100000   // 100 kHz Standard-Mode
 
 // Static buffer size for telemetry JSON framing
-#define TELEMETRY_BUFFER_SIZE   4096
+#define TELEMETRY_BUFFER_SIZE   6144
 
 #define MAX_DISCOVERED_CLIENTS  12
 

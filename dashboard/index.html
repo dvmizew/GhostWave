@@ -70,7 +70,6 @@
       <div class="flex items-center space-x-2">
         <span class="w-2.5 h-2.5 rounded-full bg-slate-600 transition-colors duration-300" id="statusDot"></span>
         <span class="font-bold tracking-tight text-white mono text-xs">GHOSTWAVE</span>
-        <span class="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-1.5 py-0.2 rounded font-mono">2.0</span>
       </div>
       <span class="text-xs text-slate-600 font-mono">|</span>
       <span class="text-xs text-slate-400 mono font-medium" id="statusLabel">DISCONNECTED</span>
@@ -101,11 +100,6 @@
       </div>
 
       <div class="flex items-center space-x-2">
-        <select id="baudRate" class="bg-[#141720] text-slate-300 border border-[#232938] rounded px-2.5 py-1 text-xs outline-none focus:border-cyan-500">
-          <option value="921600" selected>921600 Baud</option>
-          <option value="460800">460800 Baud</option>
-          <option value="115200">115200 Baud</option>
-        </select>
         <button id="connectBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-3.5 py-1 rounded text-xs transition flex items-center gap-1 disabled:opacity-40">
           <span>Connect</span>
         </button>
@@ -356,76 +350,42 @@
 
   <!-- Tab 2: Wi-Fi (2.4 GHz) -->
   <main id="tabContentWifi" class="flex-1 flex flex-col gap-3 hidden">
-    <!-- Channel Histogram & Congestion -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-      <!-- Channel Histogram (8 cols) -->
-      <section class="lg:col-span-8 panel rounded-lg p-3 flex flex-col">
-        <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
-          <div class="flex items-center space-x-2">
-            <span class="text-white font-semibold">WI-FI CHANNEL DENSITY (2.4 GHz)</span>
-            <span class="text-slate-500">(Channels 1 to 13, 802.11 b/g/n)</span>
-          </div>
-          <div class="flex items-center space-x-1">
-            <button id="wifiDensityModeAp" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-cyan-600 text-white border border-cyan-500 transition">
-              AP Density
-            </button>
-            <button id="wifiDensityModePkts" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#141720] text-slate-400 hover:text-white border border-[#232938] transition">
-              Traffic Activity
-            </button>
-          </div>
+    <!-- Channel Histogram -->
+    <section class="panel rounded-lg p-3 flex flex-col">
+      <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
+        <div class="flex items-center space-x-2">
+          <span class="text-white font-semibold">WI-FI CHANNELS (2.4 GHz)</span>
+          <span class="text-slate-500">(Channels 1 to 13, 802.11 b/g/n)</span>
         </div>
-        <div class="relative h-52 w-full">
-          <canvas id="wifiChart"></canvas>
+        <div class="flex items-center space-x-1">
+          <button id="wifiDensityModeAp" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-cyan-600 text-white border border-cyan-500 transition">
+            AP Density
+          </button>
+          <button id="wifiDensityModePkts" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#141720] text-slate-400 hover:text-white border border-[#232938] transition">
+            Traffic Activity
+          </button>
         </div>
-        <div class="flex items-center justify-between text-[11px] mono text-slate-500 mt-2 px-2">
-          <span class="text-cyan-400 font-medium">Ch 1 (2412 MHz)</span>
-          <span class="text-cyan-400 font-medium">Ch 6 (2437 MHz)</span>
-          <span class="text-cyan-400 font-medium">Ch 11 (2462 MHz)</span>
-          <span class="text-slate-500">Ch 13 (2472 MHz)</span>
-        </div>
-      </section>
-
-      <!-- Channel Congestion Summary (4 cols) -->
-      <section class="lg:col-span-4 panel rounded-lg p-3 flex flex-col justify-between">
-        <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono">
-          <span class="text-white font-semibold">CONGESTION SUMMARY</span>
-          <span class="text-slate-500">REAL-TIME</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-center mono">
-          <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433]">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Networks (SSIDs)</div>
-            <div id="wifiApTotal" class="text-2xl font-bold text-emerald-400 mt-0.5">0</div>
-          </div>
-          <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433]">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Total Packets</div>
-            <div id="wifiPktTotal" class="text-2xl font-bold text-white mt-0.5">0</div>
-          </div>
-          <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433]">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Busiest Channel</div>
-            <div id="wifiBusiestCh" class="text-lg font-bold text-amber-400 mt-1">--</div>
-          </div>
-          <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433]">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Cleanest (1/6/11)</div>
-            <div id="wifiCleanestCh" class="text-lg font-bold text-cyan-400 mt-1">--</div>
-          </div>
-        </div>
-        <div class="mt-2 text-[11px] mono text-slate-400 bg-[#0b0d13] p-2 rounded border border-[#1a1e29] space-y-1">
-          <div class="flex justify-between items-center">
-            <span>Security Status:</span>
-            <span id="wifiDeauthBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">NORMAL</span>
-          </div>
-          <div class="flex justify-between"><span>RF Noise Floor:</span> <span id="wifiNoiseAvg" class="text-cyan-400">-- dBm</span></div>
-          <div class="flex justify-between"><span>Active Clients:</span> <span id="wifiClientCountBadge" class="text-emerald-400">0 detected</span></div>
-        </div>
-      </section>
-    </div>
+      </div>
+      <div class="relative h-52 w-full">
+        <canvas id="wifiChart"></canvas>
+      </div>
+      <div class="flex items-center justify-between text-[11px] mono text-slate-500 mt-2 px-2">
+        <span class="text-cyan-400 font-medium">Ch 1 (2412 MHz)</span>
+        <span class="text-cyan-400 font-medium">Ch 6 (2437 MHz)</span>
+        <span class="text-cyan-400 font-medium">Ch 11 (2462 MHz)</span>
+        <span class="text-slate-500">Ch 13 (2472 MHz)</span>
+      </div>
+    </section>
 
     <!-- Discovered Wi-Fi Access Points Table -->
     <section class="panel rounded-lg p-3 flex-1 flex flex-col">
       <div class="flex flex-wrap items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono gap-2">
-        <div class="flex items-center space-x-2">
-          <span class="text-white font-semibold">DISCOVERED ACCESS POINTS</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-white font-semibold">ACCESS POINTS</span>
           <span class="text-slate-500 text-[11px]" id="wifiTableCount">0 networks active</span>
+          <span class="text-slate-700">|</span>
+          <span id="wifiClientCountBadge" class="text-emerald-400 text-[11px]">0 connected</span>
+          <span id="wifiDeauthBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700"></span>
         </div>
         <div class="flex items-center space-x-2">
           <input id="wifiSearchInput" type="text" placeholder="Filter SSID or MAC..." class="bg-[#141720] text-slate-300 border border-[#232938] rounded px-2.5 py-1 text-xs outline-none focus:border-emerald-500 w-44">
@@ -435,7 +395,7 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto flex-1 max-h-[300px]">
+      <div class="overflow-x-auto flex-1 max-h-[540px]">
         <table class="w-full text-left text-xs mono border-collapse">
           <thead>
             <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
@@ -449,50 +409,12 @@
               <th class="py-2 px-3 font-semibold text-center">CLIENTS</th>
               <th class="py-2 px-3 font-semibold">SEEN</th>
               <th class="py-2 px-3 font-semibold">LAST SEEN</th>
-              <th class="py-2 px-3 font-semibold text-center">ACTION</th>
             </tr>
           </thead>
           <tbody id="wifiTableBody" class="divide-y divide-[#161a24]">
             <tr>
-              <td colspan="11" class="py-8 text-center text-slate-500">
+              <td colspan="10" class="py-8 text-center text-slate-500">
                 No Wi-Fi networks detected. Connect serial to start.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Discovered Wi-Fi Clients (Probe Requests & Active STAs) Table -->
-    <section class="panel rounded-lg p-3 flex-1 flex flex-col">
-      <div class="flex flex-wrap items-center justify-between pb-2 mb-2 border-b border-[#1b1f2b] text-xs mono gap-2">
-        <div class="flex items-center space-x-2">
-          <span class="text-white font-semibold">ACTIVE WI-FI CLIENTS</span>
-          <span class="text-slate-500 text-[11px]" id="wifiClientTableCount">0 clients active</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <input id="clientSearchInput" type="text" placeholder="Filter client MAC or SSID..." class="bg-[#141720] text-slate-300 border border-[#232938] rounded px-2.5 py-1 text-xs outline-none focus:border-cyan-500 w-48">
-          <button id="clearClientsBtn" class="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded bg-[#141720] border border-[#232938]">
-            Clear
-          </button>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto flex-1 max-h-[220px]">
-        <table class="w-full text-left text-xs mono border-collapse">
-          <thead>
-            <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
-              <th class="py-2 px-3 font-semibold">CLIENT MAC</th>
-              <th class="py-2 px-3 font-semibold">PROBED NETWORK (REQUESTED SSID)</th>
-              <th class="py-2 px-3 font-semibold">CHANNEL</th>
-              <th class="py-2 px-3 font-semibold">RSSI</th>
-              <th class="py-2 px-3 font-semibold">LAST SEEN</th>
-            </tr>
-          </thead>
-          <tbody id="wifiClientTableBody" class="divide-y divide-[#161a24]">
-            <tr>
-              <td colspan="5" class="py-6 text-center text-slate-500">
-                No active Wi-Fi clients detected.
               </td>
             </tr>
           </tbody>
@@ -633,7 +555,7 @@
 
   <!-- Global Inspector Modal Overlay -->
   <div id="inspectorModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden transition-opacity duration-150">
-    <div id="modalBox" class="bg-[#0e121d] border border-cyan-800/80 rounded-xl max-w-lg w-full p-5 shadow-2xl relative text-xs mono">
+    <div id="modalBox" class="bg-[#0e121d] border border-cyan-800/80 rounded-xl max-w-lg w-full max-h-[88vh] flex flex-col p-5 shadow-2xl relative text-xs mono">
       <!-- Modal Header -->
       <div class="flex items-start justify-between pb-3 mb-3 border-b border-[#1b2336] gap-2">
         <div class="flex items-center space-x-2.5 overflow-hidden">
@@ -652,7 +574,7 @@
       </div>
 
       <!-- Modal Body (Dynamic) -->
-      <div id="modalBody" class="space-y-3"></div>
+      <div id="modalBody" class="space-y-3 overflow-y-auto pr-1 flex-1"></div>
 
       <!-- Modal Footer -->
       <div id="modalFooter" class="flex flex-wrap items-center justify-end space-x-2 pt-3 mt-3 border-t border-[#1b2336] gap-2"></div>
@@ -905,9 +827,9 @@
     let frameCount = 0;
     let lastTime = performance.now();
 
+    const SERIAL_BAUD_RATE = 921600;
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
-    const baudRateSel = document.getElementById('baudRate');
     const statusDot = document.getElementById('statusDot');
     const statusLabel = document.getElementById('statusLabel');
     const fpsVal = document.getElementById('fpsVal');
@@ -924,19 +846,17 @@
       connectBtn.classList.remove('opacity-40');
       disconnectBtn.disabled = true;
       disconnectBtn.classList.add('opacity-40');
-      baudRateSel.disabled = false;
     }
 
-    function setConnectedUI(baud) {
+    function setConnectedUI() {
       statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
-      statusLabel.innerText = `ONLINE (${baud})`;
+      statusLabel.innerText = "ONLINE";
       statusLabel.className = "text-xs text-emerald-400 mono font-semibold";
 
       connectBtn.disabled = true;
       connectBtn.classList.add('opacity-40');
       disconnectBtn.disabled = false;
       disconnectBtn.classList.remove('opacity-40');
-      baudRateSel.disabled = true;
     }
 
     async function connectSerial() {
@@ -959,11 +879,10 @@
       if (!selectedPort) return;
 
       try {
-        const baud = parseInt(baudRateSel.value, 10);
-        await selectedPort.open({ baudRate: baud });
+        await selectedPort.open({ baudRate: SERIAL_BAUD_RATE });
         port = selectedPort;
         keepRunning = true;
-        setConnectedUI(baud);
+        setConnectedUI();
         readLoopPromise = readLoop();
       } catch (err) {
         console.error("Open port error:", err);
@@ -1393,10 +1312,8 @@
 
         // 2. Wi-Fi Telemetry
         if (Array.isArray(d.wifi_pkts) && d.wifi_pkts.length === CHANNELS) {
-          let totalPkts = 0;
           for (let i = 0; i < CHANNELS; i++) {
             const p = d.wifi_pkts[i];
-            totalPkts += p;
             if (p > smoothedTraffic[i]) {
               smoothedTraffic[i] = p;
             } else {
@@ -1404,67 +1321,19 @@
               smoothedTraffic[i] = decayed < 0.25 ? 0 : Math.round(decayed * 10) / 10;
             }
           }
-
-          document.getElementById("wifiPktTotal").innerText = totalPkts;
-
-          // Compute Busiest and Cleanest Channels based on AP density & traffic
-          const apCounts = Array(CHANNELS).fill(0);
-          for (const ap of discoveredAps.values()) {
-            if (ap.ch >= 1 && ap.ch <= CHANNELS) apCounts[ap.ch - 1]++;
-          }
-
-          let busiestCh = 1;
-          let maxLoad = -1;
-          for (let i = 0; i < CHANNELS; i++) {
-            const load = apCounts[i] * 10 + d.wifi_pkts[i];
-            if (load > maxLoad) {
-              maxLoad = load;
-              busiestCh = i + 1;
-            }
-          }
-          const busiestEl = document.getElementById("wifiBusiestCh");
-          if (busiestEl) {
-            busiestEl.innerText = (apCounts[busiestCh - 1] > 0 || maxLoad > 0)
-              ? `Ch ${busiestCh} (${apCounts[busiestCh - 1]} AP${apCounts[busiestCh - 1] > 1 ? "s" : ""})`
-              : "--";
-          }
-
-          // Cleanest Standard Channel (1, 6, 11)
-          const stdChs = [1, 6, 11];
-          let minStdLoad = Infinity;
-          let cleanestCh = 1;
-          for (const ch of stdChs) {
-            const load = apCounts[ch - 1] * 10 + d.wifi_pkts[ch - 1];
-            if (load < minStdLoad) {
-              minStdLoad = load;
-              cleanestCh = ch;
-            }
-          }
-          const cleanestEl = document.getElementById("wifiCleanestCh");
-          if (cleanestEl) {
-            cleanestEl.innerText = `Ch ${cleanestCh} (${apCounts[cleanestCh - 1]} AP${apCounts[cleanestCh - 1] > 1 ? "s" : ""})`;
-          }
         }
-        // Wi-Fi Hardware Noise Floor
         if (Array.isArray(d.wifi_noise) && d.wifi_noise.length === CHANNELS) {
-          let sum = 0, cnt = 0;
-          for (let n of d.wifi_noise) {
-            if (n < 0) { sum += n; cnt++; }
-          }
-          const avg = cnt > 0 ? Math.round(sum / cnt) : -95;
-          const noiseEl = document.getElementById('wifiNoiseAvg');
-          if (noiseEl) noiseEl.innerText = `${avg} dBm`;
+          lastWifiNoise = d.wifi_noise.slice();
         }
 
         // Wi-Fi Deauth Threat Monitor
         const deauthBadge = document.getElementById('wifiDeauthBadge');
         if (deauthBadge && d.deauth_pkts !== undefined) {
           if (d.deauth_pkts > 0) {
-            deauthBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700";
+            deauthBadge.classList.remove("hidden");
             deauthBadge.innerText = `DEAUTH DETECTED: CH ${d.deauth_ch} (${d.deauth_pkts} pkts)`;
           } else {
-            deauthBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700";
-            deauthBadge.innerText = "NORMAL";
+            deauthBadge.classList.add("hidden");
           }
         }
 
@@ -1484,7 +1353,7 @@
                 ssid: rawSsid,
                 bssid: ap.bssid,
                 ch: ap.ch,
-                freq: 2412 + (ap.ch - 1) * 5,
+                freq: ap.ch === 14 ? 2484 : 2412 + (ap.ch - 1) * 5,
                 rssi: ap.rssi,
                 auth: ap.auth || "OPEN",
                 staCount: (ap.sta !== undefined) ? ap.sta : (old ? old.staCount : 0),
@@ -1497,47 +1366,38 @@
           }
         }
 
-        // Wi-Fi Clients (Active Stations & Probes)
+        // Associated Wi-Fi Clients (Connected STAs only — ignores unassociated probes)
         let clientChanged = false;
         if (Array.isArray(d.clients)) {
           clientChanged = true;
           for (const c of d.clients) {
-            if (c.mac && c.mac !== "00:00:00:00:00:00") {
-              const old = discoveredClients.get(c.mac);
-              let resolvedSsid = c.ssid || "";
-              const clientBssid = (c.bssid && c.bssid !== "00:00:00:00:00:00") ? c.bssid : (old ? old.bssid : "");
-              
-              // If SSID is empty, match via AP table (exact BSSID or 5-byte Wi-Fi 7 MLO)
-              if (!resolvedSsid && clientBssid) {
-                if (discoveredAps.has(clientBssid)) {
-                  resolvedSsid = discoveredAps.get(clientBssid).ssid;
-                } else {
-                  for (const [apBssid, apData] of discoveredAps.entries()) {
-                    if (apBssid.slice(3).toLowerCase() === clientBssid.slice(3).toLowerCase()) {
-                      resolvedSsid = apData.ssid;
-                      break;
-                    }
-                  }
-                }
-              }
+            if (!c.mac || c.mac === "00:00:00:00:00:00") continue;
+            const old = discoveredClients.get(c.mac);
+            const clientBssid = (c.bssid && c.bssid !== "00:00:00:00:00:00") ? c.bssid : (old ? old.bssid : "");
+            if (!clientBssid) continue; // Strictly require associated AP BSSID
 
-              discoveredClients.set(c.mac, {
-                mac: c.mac,
-                bssid: clientBssid,
-                ch: c.ch,
-                rssi: c.rssi,
-                ssid: (resolvedSsid && resolvedSsid.length > 0) ? resolvedSsid : (clientBssid ? `AP ${clientBssid}` : "[Direct Data]"),
-                seenCount: (old ? old.seenCount : 0) + 1,
-                lastSeen: Date.now()
-              });
-            }
+            discoveredClients.set(c.mac, {
+              mac: c.mac,
+              bssid: clientBssid,
+              ch: c.ch,
+              rssi: c.rssi,
+              txPkts: (c.tx !== undefined) ? c.tx : (old ? old.txPkts : 0),
+              rxPkts: (c.rx !== undefined) ? c.rx : (old ? old.rxPkts : 0),
+              txBytes: (c.txb !== undefined) ? c.txb : (old ? old.txBytes : 0),
+              rxBytes: (c.rxb !== undefined) ? c.rxb : (old ? old.rxBytes : 0),
+              retryPkts: (c.rty !== undefined) ? c.rty : (old ? old.retryPkts : 0),
+              phyMode: (c.phy !== undefined) ? c.phy : (old ? old.phyMode : 0),
+              mcs: (c.mcs !== undefined) ? c.mcs : (old ? old.mcs : 0),
+              maxRateMbps: (c.rate !== undefined) ? c.rate : (old ? old.maxRateMbps : 0),
+              wifiStd: (c.wifi !== undefined) ? c.wifi : (old ? old.wifiStd : 0),
+              flags: (c.flg !== undefined) ? c.flg : (old ? old.flags : 0),
+              lastSeen: Date.now()
+            });
           }
         }
 
-        // Synchronized real-time update: render tables in lockstep with updated client/AP state
         if (apChanged || clientChanged) {
           renderWifiTable();
-          renderWifiClientTable();
           if (apChanged) updateWifiChart();
         }
 
@@ -1693,25 +1553,92 @@
       tbody.innerHTML = html;
     }
 
-    // Modal Inspector Controller ("Modale pentru retele si chestii")
     let activeInspectedBssid = null;
-    let activeInspectedMac = null;
+    let lastWifiNoise = new Array(13).fill(-95);
 
-    function getWifiGenBadge(ap) {
-      if (ap.wifiStd === 7 || ap.isMlo) {
-        if (ap.isMlo) {
-          return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-700 tracking-wide" title="Wi-Fi 7 (802.11be) Multi-Link Operation">Wi-Fi 7 MLO</span>';
+    // Dynamic IEEE OUI database for MAC vendor lookup
+    const ouiMap = new Map();
+    fetch("https://raw.githubusercontent.com/nmap/nmap/master/nmap-mac-prefixes")
+      .then(r => r.ok ? r.text() : "")
+      .then(txt => {
+        for (const line of txt.split("\n")) {
+          if (!line || line[0] === "#") continue;
+          const sp = line.indexOf(" ");
+          if (sp === 6) ouiMap.set(line.slice(0, 6).toLowerCase(), line.slice(7).trim());
         }
-        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-700 tracking-wide" title="Wi-Fi 7 (802.11be)">Wi-Fi 7</span>';
-      } else if (ap.wifiStd === 6) {
-        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700 tracking-wide" title="Wi-Fi 6 (802.11ax)">Wi-Fi 6</span>';
-      } else if (ap.wifiStd === 5) {
-        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-700 tracking-wide" title="Wi-Fi 5 (802.11ac)">Wi-Fi 5</span>';
-      } else if (ap.wifiStd === 4) {
-        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800 tracking-wide" title="Wi-Fi 4 (802.11n)">Wi-Fi 4</span>';
-      } else {
-        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#141824] text-slate-400 border border-[#232938]" title="Legacy 802.11b/g">Legacy</span>';
+        if (activeInspectedBssid) openApModal(activeInspectedBssid, false);
+      })
+      .catch(() => {}); // Offline fallback: shows OUI hex prefix
+
+    function lookupMacVendor(mac, flags = 0) {
+      if (!mac || mac.length < 8) return { label: "Unknown", isRandom: false };
+      const firstOctet = parseInt(mac.slice(0, 2), 16);
+      const isRandom = ((flags & 0x40) !== 0) || (!isNaN(firstOctet) && (firstOctet & 0x02) !== 0);
+      if (isRandom) {
+        return { label: "Private / Random MAC", isRandom: true };
       }
+      const key = mac.slice(0, 8).replace(/:/g, "").toLowerCase();
+      return { label: ouiMap.get(key) || `OUI ${mac.slice(0, 8).toUpperCase()}`, isRandom: false };
+    }
+
+    function formatBytes(b) {
+      if (!b || b <= 0) return "0 B";
+      if (b < 1024) return `${b} B`;
+      if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+      return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function formatClientPhy(c) {
+      const fl = c.flags || 0;
+      const bw = (fl & 0x10) ? "40MHz" : "20MHz";
+      const gi = (fl & 0x20) ? "SGI" : "LGI";
+      const rateStr = c.maxRateMbps > 0 ? ` · ${c.maxRateMbps} Mbps` : "";
+      if (c.phyMode === 1) {
+        return `802.11n MCS${c.mcs & 0x07} · ${bw} · ${gi}${rateStr}`;
+      }
+      if (c.maxRateMbps === 1) {
+        return "1 Mbps (keepalive / control rate)";
+      }
+      if (c.maxRateMbps > 0) {
+        return `Legacy OFDM/DSSS${rateStr}`;
+      }
+      return "Downlink only (no TX PHY)";
+    }
+
+    function getAuthBadge(auth) {
+      if (auth === "WPA3") return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700">WPA3</span>';
+      if (auth === "WPA2") return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">WPA2</span>';
+      if (auth === "WPA") return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800">WPA</span>';
+      if (auth === "WEP") return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">WEP</span>';
+      return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">OPEN</span>';
+    }
+
+    function getWifiGenBadge(wifiStd, isMlo = false, compact = false) {
+      const sz = compact ? 'text-[9px]' : 'text-[10px] tracking-wide';
+      if (wifiStd === 7 || isMlo) {
+        return isMlo
+          ? `<span class="px-1.5 py-0.5 rounded ${sz} font-bold bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-700" title="Wi-Fi 7 (802.11be) Multi-Link Operation">Wi-Fi 7 MLO</span>`
+          : `<span class="px-1.5 py-0.5 rounded ${sz} font-bold bg-purple-950 text-purple-300 border border-purple-700" title="Wi-Fi 7 (802.11be)">Wi-Fi 7</span>`;
+      }
+      if (wifiStd === 6) return `<span class="px-1.5 py-0.5 rounded ${sz} font-bold bg-amber-950 text-amber-300 border border-amber-700" title="Wi-Fi 6 (802.11ax)">Wi-Fi 6</span>`;
+      if (wifiStd === 5) return `<span class="px-1.5 py-0.5 rounded ${sz} font-bold bg-blue-950 text-blue-300 border border-blue-700" title="Wi-Fi 5 (802.11ac)">Wi-Fi 5</span>`;
+      if (wifiStd === 4) return `<span class="px-1.5 py-0.5 rounded ${sz} font-semibold bg-sky-950 text-sky-300 border border-sky-800" title="Wi-Fi 4 (802.11n)">Wi-Fi 4</span>`;
+      return compact ? '' : `<span class="px-1.5 py-0.5 rounded ${sz} font-medium bg-[#141824] text-slate-400 border border-[#232938]" title="Legacy 802.11b/g">Legacy</span>`;
+    }
+
+    function getAssociatedClientsForAp(ap) {
+      const apBssidLower = ap.bssid.toLowerCase();
+      return Array.from(discoveredClients.values()).filter(c => {
+        if (!c.bssid || c.bssid === "00:00:00:00:00:00") return false;
+        return c.bssid.toLowerCase() === apBssidLower;
+      });
+    }
+
+    function setModalWidth(wide) {
+      const box = document.getElementById("modalBox");
+      if (!box) return;
+      box.classList.toggle("max-w-3xl", wide);
+      box.classList.toggle("max-w-lg", !wide);
     }
 
     function openInspectorModal() {
@@ -1721,7 +1648,6 @@
 
     function closeInspectorModal() {
       activeInspectedBssid = null;
-      activeInspectedMac = null;
       const m = document.getElementById("inspectorModal");
       if (m) m.classList.add("hidden");
     }
@@ -1731,79 +1657,157 @@
       const ap = discoveredAps.get(bssid);
       if (!ap) return;
 
+      const modalBodyEl = document.getElementById("modalBody");
+      // Pause live DOM replacement while user is selecting text inside the modal
+      if (!showOverlay && modalBodyEl) {
+        const sel = window.getSelection();
+        if (sel && sel.toString().length > 0 && modalBodyEl.contains(sel.anchorNode)) {
+          return;
+        }
+      }
+      const prevScrollTop = (!showOverlay && modalBodyEl) ? modalBodyEl.scrollTop : 0;
+
       activeInspectedBssid = bssid;
-      activeInspectedMac = null;
+      setModalWidth(true);
 
       const icon = document.getElementById("modalTypeIcon");
       if (icon) icon.className = "w-3 h-3 rounded-full bg-cyan-400 shrink-0";
+      const apVendor = lookupMacVendor(ap.bssid, 0);
       document.getElementById("modalTitle").innerText = ap.ssid;
-      document.getElementById("modalSubtitle").innerText = `BSSID: ${ap.bssid}`;
+      document.getElementById("modalSubtitle").innerText = `BSSID: ${ap.bssid} · ${apVendor.label}`;
 
-      let authBadge = "";
-      if (ap.auth === "WPA3") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700">WPA3</span>';
-      else if (ap.auth === "WPA2") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">WPA2</span>';
-      else if (ap.auth === "WPA") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800">WPA</span>';
-      else if (ap.auth === "WEP") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">WEP</span>';
-      else authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">OPEN</span>';
-      document.getElementById("modalBadge").innerHTML = `${authBadge} ${getWifiGenBadge(ap)}`;
+      document.getElementById("modalBadge").innerHTML = `${getAuthBadge(ap.auth)} ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}`;
 
       const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
       const barColor = ap.rssi >= -65 ? "bg-emerald-400" : ap.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
       const ago = Math.round((Date.now() - ap.lastSeen) / 1000);
+      const chNoise = (ap.ch >= 1 && ap.ch <= 13 && lastWifiNoise[ap.ch - 1] < 0) ? lastWifiNoise[ap.ch - 1] : -95;
+      const apSnr = Math.max(0, ap.rssi - chNoise);
 
-      // Associated / probing clients for this AP (matched via BSSID, Wi-Fi 7 MLO, or SSID)
-      const associated = Array.from(discoveredClients.values()).filter(c => {
-        if (c.bssid && c.bssid !== "00:00:00:00:00:00") {
-          if (c.bssid.toLowerCase() === ap.bssid.toLowerCase()) return true;
-          if (c.bssid.slice(3).toLowerCase() === ap.bssid.slice(3).toLowerCase()) return true;
-        }
-        if (ap.ssid && ap.ssid !== "[Hidden SSID]" && c.ssid === ap.ssid) return true;
-        return false;
-      });
+      // Strictly associated clients connected to this exact AP BSSID
+      const associated = getAssociatedClientsForAp(ap).sort((a, b) => b.lastSeen - a.lastSeen);
 
       let clientsHtml = "";
       if (associated.length > 0) {
         clientsHtml = `
           <div class="mt-3">
-            <div class="text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
-              <span>ASSOCIATED / PROBING CLIENTS (${associated.length})</span>
-              <span class="text-emerald-400 text-[10px]">Active</span>
+            <div class="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>CONNECTED CLIENTS (${associated.length} active)</span>
+              <span class="text-slate-500 text-[10px] font-normal">Live 802.11 Data / Assoc Telemetry</span>
             </div>
-            <div class="max-h-36 overflow-y-auto border border-[#1b2234] rounded bg-[#090c13] divide-y divide-[#151c2c]">
-              ${associated.map(c => `
-                <div class="p-2 flex items-center justify-between text-[11px]">
-                  <span class="text-cyan-300 font-semibold select-all">${c.mac}</span>
-                  <span class="text-slate-400">Ch ${c.ch}</span>
-                  <span class="text-emerald-400 font-medium">${c.rssi} dBm</span>
-                </div>
-              `).join("")}
+            <div class="space-y-2">
+              ${associated.map(c => {
+                const fl = c.flags || 0;
+                const hasTxRssi = (fl & 0x08) !== 0;
+                const isEnc = (fl & 0x01) !== 0;
+                const isQos = (fl & 0x02) !== 0;
+                const isPwrSave = (fl & 0x04) !== 0;
+                const vendor = lookupMacVendor(c.mac, fl);
+                const cNoise = (c.ch >= 1 && c.ch <= 13 && lastWifiNoise[c.ch - 1] < 0) ? lastWifiNoise[c.ch - 1] : -95;
+                const cRssiValid = c.rssi > -128;
+                const cSnr = cRssiValid ? Math.max(0, c.rssi - cNoise) : 0;
+                const cQual = cRssiValid ? Math.max(0, Math.min(100, Math.round(2 * (c.rssi + 100)))) : 0;
+                const cBarColor = c.rssi >= -65 ? "bg-emerald-400" : c.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
+                const cAgo = Math.round((Date.now() - c.lastSeen) / 1000);
+                const totalTx = c.txPkts || 0;
+                const totalRx = c.rxPkts || 0;
+                const retryPct = totalTx > 0 ? Math.round(((c.retryPkts || 0) / totalTx) * 100) : 0;
+                const retryColor = retryPct >= 15 ? "text-rose-400" : retryPct >= 5 ? "text-amber-400" : "text-emerald-400";
+
+                const vendorBadge = vendor.isRandom
+                  ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-950/80 text-amber-300 border border-amber-800/80" title="Locally Administered Address (iOS/Android/Windows MAC randomization)">Private MAC</span>`
+                  : `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-cyan-950/70 text-cyan-300 border border-cyan-800/70">${escapeHtml(vendor.label)}</span>`;
+
+                const pwrBadge = !hasTxRssi
+                  ? ''
+                  : (isPwrSave
+                    ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-800 text-slate-300 border border-slate-700" title="802.11 PwrMgt=1 (Power Save / Sleep)">Sleep</span>`
+                    : `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/70" title="802.11 PwrMgt=0 (Active / Awake)">Awake</span>`);
+
+                const encBadge = isEnc
+                  ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-900">Encrypted</span>`
+                  : '';
+
+                const qosBadge = isQos
+                  ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-950/70 text-indigo-300 border border-indigo-800/70">QoS</span>`
+                  : '';
+
+                return `
+                  <div class="p-2.5 rounded-lg bg-[#090c13] border border-[#1b2234] hover:border-cyan-800/70 transition space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-1.5">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-cyan-300 font-bold text-xs select-all">${escapeHtml(c.mac)}</span>
+                        ${vendorBadge}
+                        ${getWifiGenBadge(c.wifiStd, false, true)}
+                        ${pwrBadge}
+                        ${encBadge}
+                        ${qosBadge}
+                      </div>
+                      <span class="text-[10px] text-slate-500">Ch ${c.ch} · ${cAgo === 0 ? "just now" : cAgo + "s ago"}</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                        <div class="text-slate-500 uppercase flex items-center justify-between">
+                          <span>Signal</span>
+                          <span class="${hasTxRssi ? 'text-emerald-400' : 'text-slate-500'}">${hasTxRssi ? 'TX' : 'AP'}</span>
+                        </div>
+                        <div class="text-white font-bold mt-0.5">${cRssiValid ? `${c.rssi} dBm` : '--'} <span class="text-slate-400 font-normal">${cRssiValid ? `(SNR ${cSnr}dB)` : ''}</span></div>
+                        <div class="w-full bg-[#1b202e] h-1 rounded overflow-hidden mt-1">
+                          <div class="${cBarColor} h-full" style="width: ${cQual}%"></div>
+                        </div>
+                      </div>
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                        <div class="text-slate-500 uppercase">Uplink (TX)</div>
+                        <div class="text-cyan-300 font-bold mt-0.5">${totalTx} pkts</div>
+                        <div class="text-slate-400">${formatBytes(c.txBytes)}</div>
+                      </div>
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                        <div class="text-slate-500 uppercase">Downlink (RX)</div>
+                        <div class="text-purple-300 font-bold mt-0.5">${totalRx} pkts</div>
+                        <div class="text-slate-400">${formatBytes(c.rxBytes)}</div>
+                      </div>
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                        <div class="text-slate-500 uppercase">TX Retries</div>
+                        <div class="${retryColor} font-bold mt-0.5">${c.retryPkts || 0} <span class="font-normal">(${retryPct}%)</span></div>
+                        <div class="text-slate-500 truncate">${hasTxRssi ? 'Uplink verified' : 'Downlink only'}</div>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-[#141926]">
+                      <span>PHY: <span class="text-slate-200">${formatClientPhy(c)}</span></span>
+                      <span class="text-slate-500">BSSID: ${escapeHtml(c.bssid)}</span>
+                    </div>
+                  </div>
+                `;
+              }).join("")}
             </div>
           </div>
         `;
       } else {
         clientsHtml = `
-          <div class="mt-3 p-2.5 rounded bg-[#090c13] border border-[#1b2234] text-slate-500 text-[11px] text-center">
-            No client devices currently active on this SSID.
+          <div class="mt-3 p-3 rounded bg-[#090c13] border border-[#1b2234] text-slate-500 text-[11px] text-center">
+            No connected client traffic observed on this AP yet.
           </div>
         `;
       }
 
-      document.getElementById("modalBody").innerHTML = `
-        <div class="grid grid-cols-3 gap-2">
+      modalBodyEl.innerHTML = `
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
             <div class="text-[10px] text-slate-500 uppercase">Channel / Freq</div>
             <div class="text-white font-bold mt-0.5">Ch ${ap.ch} (${ap.freq} MHz)</div>
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Signal RSSI</div>
-            <div class="text-emerald-400 font-bold mt-0.5">${ap.rssi} dBm</div>
+            <div class="text-[10px] text-slate-500 uppercase">Signal / SNR</div>
+            <div class="text-emerald-400 font-bold mt-0.5">${ap.rssi} dBm <span class="text-slate-400 font-normal text-[10px]">(${apSnr} dB)</span></div>
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
             <div class="text-[10px] text-slate-500 uppercase">Quality Est.</div>
             <div class="text-emerald-400 font-bold mt-0.5">${quality}%</div>
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Packets Seen</div>
+            <div class="text-[10px] text-slate-500 uppercase">Beacons Seen</div>
             <div class="text-slate-300 font-bold mt-0.5">${ap.seenCount}</div>
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
@@ -1812,7 +1816,7 @@
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
             <div class="text-[10px] text-slate-500 uppercase">Connected Clients</div>
-            <div class="text-cyan-300 font-bold mt-0.5">${associated.length} sniffed <span class="text-slate-400 font-normal text-xs">/ ${ap.staCount !== undefined ? ap.staCount : '0'} AP</span></div>
+            <div class="text-cyan-300 font-bold mt-0.5">${associated.length} active <span class="text-slate-400 font-normal text-xs">/ ${ap.staCount !== undefined ? ap.staCount : '0'} AP</span></div>
           </div>
         </div>
         <div class="w-full bg-[#1b202e] h-1.5 rounded overflow-hidden mt-1">
@@ -1820,81 +1824,25 @@
         </div>
         ${clientsHtml}
       `;
+      if (!showOverlay) modalBodyEl.scrollTop = prevScrollTop;
 
-      document.getElementById("modalFooter").innerHTML = `
-        ${associated.length > 0 || (ap.ssid && ap.ssid !== "[Hidden SSID]") ? `
-          <button onclick="filterClientsFromAp('${ap.bssid}')" class="px-3 py-1 rounded bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 font-semibold transition">
-            Filter in Clients Table
+      if (showOverlay) {
+        document.getElementById("modalFooter").innerHTML = `
+          <button onclick="closeInspectorModal()" class="px-3 py-1 rounded bg-[#141824] hover:bg-[#1c2234] text-slate-300 border border-[#232938] transition">
+            Close
           </button>
-        ` : ""}
-        <button onclick="closeInspectorModal()" class="px-3 py-1 rounded bg-[#141824] hover:bg-[#1c2234] text-slate-300 border border-[#232938] transition">
-          Close
-        </button>
-      `;
-
-      if (showOverlay) openInspectorModal();
-    };
-
-    window.openClientModal = function(mac, showOverlay = true) {
-      if (!mac) return;
-      const cli = discoveredClients.get(mac);
-      if (!cli) return;
-
-      activeInspectedMac = mac;
-      activeInspectedBssid = null;
-
-      const icon = document.getElementById("modalTypeIcon");
-      if (icon) icon.className = "w-3 h-3 rounded-full bg-emerald-400 shrink-0";
-      document.getElementById("modalTitle").innerText = cli.mac;
-      document.getElementById("modalSubtitle").innerText = `Wi-Fi Client Station (STA)`;
-      document.getElementById("modalBadge").innerHTML = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700">CLIENT</span>';
-
-      const quality = Math.max(0, Math.min(100, Math.round(2 * (cli.rssi + 100))));
-      const barColor = cli.rssi >= -65 ? "bg-emerald-400" : cli.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
-      const ago = Math.round((Date.now() - cli.lastSeen) / 1000);
-
-      document.getElementById("modalBody").innerHTML = `
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Target / Probed SSID</div>
-            <div class="text-emerald-300 font-bold mt-0.5 select-all truncate">${escapeHtml(cli.ssid)}</div>
-          </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Channel / Freq</div>
-            <div class="text-white font-bold mt-0.5">Ch ${cli.ch} (${2412 + (cli.ch - 1) * 5} MHz)</div>
-          </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Signal RSSI</div>
-            <div class="text-emerald-400 font-bold mt-0.5">${cli.rssi} dBm (${quality}%)</div>
-          </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Activity & Last Seen</div>
-            <div class="text-slate-300 font-bold mt-0.5">${cli.seenCount}x (${ago === 0 ? "just now" : ago + "s ago"})</div>
-          </div>
-        </div>
-        <div class="w-full bg-[#1b202e] h-1.5 rounded overflow-hidden mt-1">
-          <div class="${barColor} h-full" style="width: ${quality}%"></div>
-        </div>
-      `;
-
-      document.getElementById("modalFooter").innerHTML = `
-        ${cli.ssid && cli.ssid !== "[Wildcard Probe]" ? `
-          <button onclick="filterApsFromClient('${cli.mac}')" class="px-3 py-1 rounded bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 font-semibold transition">
-            Find Network in AP Table
-          </button>
-        ` : ""}
-        <button onclick="closeInspectorModal()" class="px-3 py-1 rounded bg-[#141824] hover:bg-[#1c2234] text-slate-300 border border-[#232938] transition">
-          Close
-        </button>
-      `;
-
-      if (showOverlay) openInspectorModal();
+        `;
+        openInspectorModal();
+      }
     };
 
     window.openFmStationModal = function(freq) {
       if (!freq) return;
       const st = detectedStations.get(freq);
       if (!st) return;
+
+      activeInspectedBssid = null;
+      setModalWidth(false);
 
       const icon = document.getElementById("modalTypeIcon");
       if (icon) icon.className = "w-3 h-3 rounded-full bg-cyan-400 shrink-0";
@@ -1947,6 +1895,9 @@
       const b = discoveredBles.get(addr);
       if (!b) return;
 
+      activeInspectedBssid = null;
+      setModalWidth(false);
+
       const icon = document.getElementById("modalTypeIcon");
       if (icon) icon.className = "w-3 h-3 rounded-full bg-purple-400 shrink-0";
       document.getElementById("modalTitle").innerText = b.name;
@@ -1991,40 +1942,6 @@
       openInspectorModal();
     };
 
-    window.filterClientsFromAp = function(bssid) {
-      const ap = discoveredAps.get(bssid);
-      if (ap && ap.ssid && ap.ssid !== "[Hidden SSID]") {
-        filterClientsFromModal(ap.ssid);
-      }
-    };
-
-    window.filterApsFromClient = function(mac) {
-      const cli = discoveredClients.get(mac);
-      if (cli && cli.ssid && cli.ssid !== "[Wildcard Probe]") {
-        filterApsFromModal(cli.ssid);
-      }
-    };
-
-    window.filterClientsFromModal = function(ssid) {
-      closeInspectorModal();
-      const cliInput = document.getElementById("clientSearchInput");
-      if (cliInput) {
-        cliInput.value = ssid;
-        renderWifiClientTable();
-        cliInput.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    };
-
-    window.filterApsFromModal = function(ssid) {
-      closeInspectorModal();
-      const apInput = document.getElementById("wifiSearchInput");
-      if (apInput) {
-        apInput.value = ssid;
-        renderWifiTable();
-        apInput.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    };
-
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeInspectorModal();
     });
@@ -2045,18 +1962,18 @@
     function renderWifiTable() {
       const tbody = document.getElementById('wifiTableBody');
       const badge = document.getElementById('badgeWifiCount');
-      const apTotalEl = document.getElementById('wifiApTotal');
       const countEl = document.getElementById('wifiTableCount');
       const filter = document.getElementById('wifiSearchInput').value.trim().toLowerCase();
 
       badge.innerText = discoveredAps.size;
-      apTotalEl.innerText = discoveredAps.size;
       countEl.innerText = `${discoveredAps.size} networks discovered`;
+      const cliBadge = document.getElementById('wifiClientCountBadge');
+      if (cliBadge) cliBadge.innerText = `${discoveredClients.size} connected`;
 
       if (discoveredAps.size === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="11" class="py-8 text-center text-slate-500">
+            <td colspan="10" class="py-8 text-center text-slate-500">
               No Wi-Fi networks detected.
             </td>
           </tr>
@@ -2077,15 +1994,8 @@
         const barColor = ap.rssi >= -65 ? 'bg-emerald-400' : ap.rssi >= -78 ? 'bg-amber-400' : 'bg-rose-400';
         const ago = Math.round((Date.now() - ap.lastSeen) / 1000);
 
-        // Associated / probing clients for this AP
-        const activeClients = Array.from(discoveredClients.values()).filter(c => {
-          if (c.bssid && c.bssid !== "00:00:00:00:00:00") {
-            if (c.bssid.toLowerCase() === ap.bssid.toLowerCase()) return true;
-            if (c.bssid.slice(3).toLowerCase() === ap.bssid.slice(3).toLowerCase()) return true;
-          }
-          if (ap.ssid && ap.ssid !== "[Hidden SSID]" && c.ssid === ap.ssid) return true;
-          return false;
-        });
+        // Strictly associated clients connected to this AP
+        const activeClients = getAssociatedClientsForAp(ap);
         const activeCount = activeClients.length;
         const bssSta = ap.staCount || 0;
 
@@ -2098,31 +2008,16 @@
           clientsBadge = `<span class="text-slate-600 text-xs">0</span>`;
         }
 
-        let authBadge = '';
-        if (ap.auth === 'WPA3') {
-          authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700">WPA3</span>';
-        } else if (ap.auth === 'WPA2') {
-          authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">WPA2</span>';
-        } else if (ap.auth === 'WPA') {
-          authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800">WPA</span>';
-        } else if (ap.auth === 'WEP') {
-          authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">WEP</span>';
-        } else {
-          authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">OPEN</span>';
-        }
-
-        const rowHighlight = 'hover:bg-[#141824]';
-
         html += `
-          <tr class="${rowHighlight} transition-colors cursor-pointer" onclick="openApModal('${ap.bssid}')">
+          <tr class="hover:bg-[#141824] transition-colors cursor-pointer" onclick="openApModal('${escapeHtml(ap.bssid)}')">
             <td class="py-2.5 px-3 font-semibold text-white">
               <div class="flex items-center space-x-2">
                 <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
-                ${getWifiGenBadge(ap)}
+                ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}
               </div>
             </td>
-            <td class="py-2.5 px-3 text-cyan-300 select-all">${ap.bssid}</td>
-            <td class="py-2.5 px-3">${authBadge}</td>
+            <td class="py-2.5 px-3 text-cyan-300 select-all">${escapeHtml(ap.bssid)}</td>
+            <td class="py-2.5 px-3">${getAuthBadge(ap.auth)}</td>
             <td class="py-2.5 px-3">
               <span class="px-1.5 py-0.5 rounded text-[10px] bg-[#1a2130] text-emerald-400 font-bold border border-[#2b354c]">
                 Ch ${ap.ch}
@@ -2141,11 +2036,6 @@
             <td class="py-2.5 px-3 text-center">${clientsBadge}</td>
             <td class="py-2.5 px-3 text-slate-400">${ap.seenCount}</td>
             <td class="py-2.5 px-3 text-slate-500">${ago === 0 ? 'just now' : ago + 's ago'}</td>
-            <td class="py-2.5 px-3 text-center">
-              <button onclick="event.stopPropagation(); openApModal('${ap.bssid}')" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#1b2333] hover:bg-cyan-950 text-cyan-300 border border-[#2b354c] hover:border-cyan-700 transition">
-                Inspect
-              </button>
-            </td>
           </tr>
         `;
       }
@@ -2154,74 +2044,6 @@
       // Realtime live refresh for open AP inspector modal
       if (activeInspectedBssid && !document.getElementById("inspectorModal").classList.contains("hidden")) {
         openApModal(activeInspectedBssid, false);
-      }
-    }
-
-    // Render Wi-Fi Clients Table (Probe Requests & Active Stations)
-    function renderWifiClientTable() {
-      const tbody = document.getElementById('wifiClientTableBody');
-      const countEl = document.getElementById('wifiClientTableCount');
-      const badgeEl = document.getElementById('wifiClientCountBadge');
-      const cliFilter = document.getElementById('clientSearchInput') ? document.getElementById('clientSearchInput').value.trim().toLowerCase() : '';
-
-      if (badgeEl) badgeEl.innerText = `${discoveredClients.size} detected`;
-      if (countEl) countEl.innerText = `${discoveredClients.size} clients active (Data & Probes)`;
-
-      if (!tbody) return;
-
-      if (discoveredClients.size === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="5" class="py-6 text-center text-slate-500">
-              No active Wi-Fi clients detected.
-            </td>
-          </tr>
-        `;
-        return;
-      }
-
-      const allClients = Array.from(discoveredClients.values());
-      const filtered = allClients.filter(cli => {
-        if (!cliFilter) return true;
-        return cli.mac.toLowerCase().includes(cliFilter) || cli.ssid.toLowerCase().includes(cliFilter);
-      });
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="5" class="py-6 text-center text-slate-500">
-              No clients match filter "${escapeHtml(cliFilter)}".
-            </td>
-          </tr>
-        `;
-        return;
-      }
-
-      filtered.sort((a, b) => b.rssi - a.rssi);
-      let html = '';
-      for (const cli of filtered) {
-        const ago = Math.round((Date.now() - cli.lastSeen) / 1000);
-        html += `
-          <tr class="hover:bg-[#141824] transition-colors cursor-pointer" onclick="openClientModal('${cli.mac}')">
-            <td class="py-2.5 px-3 text-cyan-300 select-all font-semibold">${cli.mac}</td>
-            <td class="py-2.5 px-3 text-slate-200">
-              <span class="${cli.ssid === '[Wildcard Probe]' ? 'text-slate-500 italic' : 'text-emerald-300 font-medium'}">${escapeHtml(cli.ssid)}</span>
-            </td>
-            <td class="py-2.5 px-3">
-              <span class="px-1.5 py-0.5 rounded text-[10px] bg-[#1a2130] text-emerald-400 font-bold border border-[#2b354c]">
-                Ch ${cli.ch}
-              </span>
-            </td>
-            <td class="py-2.5 px-3 font-semibold ${cli.rssi >= -70 ? 'text-emerald-400' : 'text-amber-400'}">${cli.rssi} dBm</td>
-            <td class="py-2.5 px-3 text-slate-500">${ago === 0 ? 'just now' : ago + 's ago'} (${cli.seenCount}x)</td>
-          </tr>
-        `;
-      }
-      tbody.innerHTML = html;
-
-      // Realtime live refresh for open Client inspector modal
-      if (activeInspectedMac && !document.getElementById("inspectorModal").classList.contains("hidden")) {
-        openClientModal(activeInspectedMac, false);
       }
     }
 
@@ -2347,18 +2169,12 @@
 
     document.getElementById('clearWifiBtn').addEventListener('click', () => {
       discoveredAps.clear();
+      discoveredClients.clear();
+      smoothedTraffic.fill(0);
+      if (activeInspectedBssid) closeInspectorModal();
       renderWifiTable();
+      updateWifiChart();
     });
-
-    const clearClientsBtn = document.getElementById('clearClientsBtn');
-    if (clearClientsBtn) {
-      clearClientsBtn.addEventListener('click', () => {
-        discoveredClients.clear();
-        const cliInput = document.getElementById('clientSearchInput');
-        if (cliInput) cliInput.value = '';
-        renderWifiClientTable();
-      });
-    }
 
     document.getElementById('clearBleBtn').addEventListener('click', () => {
       discoveredBles.clear();
@@ -2370,10 +2186,6 @@
     });
 
     document.getElementById('wifiSearchInput').addEventListener('input', renderWifiTable);
-    const clientSearchInput = document.getElementById('clientSearchInput');
-    if (clientSearchInput) {
-      clientSearchInput.addEventListener('input', renderWifiClientTable);
-    }
     document.getElementById('bleSearchInput').addEventListener('input', renderBleTable);
 
     function escapeHtml(str) {
@@ -2381,32 +2193,43 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
-    const DEVICE_TTL_MS = 180000; // 3 minutes pruning TTL
+    const DEVICE_TTL_MS = 180000; // 3 minutes pruning TTL for BLE/FM
+    const WIFI_CLIENT_TTL_MS = 60000; // 60s TTL matching firmware 45s client cache
+    const WIFI_AP_TTL_MS = 90000; // 90s TTL matching firmware 60s AP cache
 
     function pruneStaleDevices() {
       const now = Date.now();
+      let wifiPruned = false;
       for (const [key, dev] of discoveredBles.entries()) {
         if (now - dev.lastSeen > DEVICE_TTL_MS) discoveredBles.delete(key);
       }
       for (const [key, dev] of discoveredClients.entries()) {
-        if (now - dev.lastSeen > DEVICE_TTL_MS) discoveredClients.delete(key);
+        if (now - dev.lastSeen > WIFI_CLIENT_TTL_MS) {
+          discoveredClients.delete(key);
+          wifiPruned = true;
+        }
       }
       for (const [key, ap] of discoveredAps.entries()) {
-        if (now - ap.lastSeen > DEVICE_TTL_MS * 2) discoveredAps.delete(key);
+        if (now - ap.lastSeen > WIFI_AP_TTL_MS) {
+          discoveredAps.delete(key);
+          wifiPruned = true;
+        }
       }
+      if (activeInspectedBssid && !discoveredAps.has(activeInspectedBssid)) {
+        closeInspectorModal();
+      }
+      return wifiPruned;
     }
 
     // Auto-refresh tables every 2 seconds
     setInterval(() => {
-      pruneStaleDevices();
+      const wifiPruned = pruneStaleDevices();
       if (detectedStations.size > 0 && !tabs.radio.content.classList.contains('hidden')) {
         renderRadioTable();
       }
-      if (discoveredAps.size > 0 && !tabs.wifi.content.classList.contains('hidden')) {
+      if ((discoveredAps.size > 0 || wifiPruned) && !tabs.wifi.content.classList.contains('hidden')) {
         renderWifiTable();
-      }
-      if (discoveredClients.size > 0 && !tabs.wifi.content.classList.contains('hidden')) {
-        renderWifiClientTable();
+        if (wifiPruned) updateWifiChart();
       }
       if (discoveredBles.size > 0 && !tabs.ble.content.classList.contains('hidden')) {
         renderBleTable();

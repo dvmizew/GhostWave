@@ -22,7 +22,7 @@ public:
                               uint32_t dwellMs = WIFI_CHANNEL_DWELL_MS);
 
 private:
-    static void IRAM_ATTR promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t type);
+    static void promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t type);
 };
 
 #endif // GHOSTWAVE_RF_WIFI_SNIFFER_H
