@@ -481,6 +481,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                     uint16_t staCount = 0;
                     uint8_t channelUtil = 0xFF;
                     uint8_t caps = 0;
+                    uint8_t mesh = 0;
                     char country[3] = {0};
                     int8_t maxTxPower = 0;
                     char wpsModel[24] = {0};
@@ -565,6 +566,13 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             caps |= WIFI_AP_CAP_11R;
                         } else if (id == 70 && elen >= 5) { // RRM Enabled Capabilities -> 802.11k
                             caps |= WIFI_AP_CAP_11K;
+                        } else if (id == 113 && elen == 7) { // IEEE 802.11s Mesh Configuration
+                            mesh |= WIFI_AP_MESH_11S;
+                        } else if (id == 114) { // IEEE 802.11s Mesh ID
+                            mesh |= WIFI_AP_MESH_11S;
+                            if (elen > 0 && ssidBuf[0] == '\0') {
+                                parseSsidIe(&payload[pos + 2], elen, ssidBuf);
+                            }
                         } else if (id == 127 && elen >= 3) { // Extended Capabilities -> 802.11v (bit 19)
                             if ((payload[pos + 4] & 0x08) != 0) {
                                 caps |= WIFI_AP_CAP_11V;
@@ -682,7 +690,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                     if (rsnCap & 0x0040) caps |= WIFI_AP_CAP_PMF_REQ; // MFPR (bit 6)
                                 }
                             }
-                        } else if (id == 221 && elen >= 4) { // Vendor Specific (WPA1 & WPS)
+                        } else if (id == 221 && elen >= 4) { // Vendor Specific (WPA1, WPS, WFA EasyMesh/Multi-AP)
                             if (payload[pos + 2] == 0x00 &&
                                 payload[pos + 3] == 0x50 &&
                                 payload[pos + 4] == 0xF2) {
@@ -694,6 +702,26 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                     if (elen > 4) {
                                         parseWpsIe(&payload[pos + 6], static_cast<uint16_t>(elen - 4), caps, wpsModel, sizeof(wpsModel));
                                     }
+                                }
+                            } else if (payload[pos + 2] == 0x50 &&
+                                       payload[pos + 3] == 0x6F &&
+                                       payload[pos + 4] == 0x9A &&
+                                       payload[pos + 5] == 0x1B) { // Wi-Fi Alliance Multi-AP (EasyMesh)
+                                mesh |= WIFI_AP_MESH_EASYMESH;
+                                uint16_t subPos = pos + 6;
+                                uint16_t elemEnd = pos + 2 + elen;
+                                while (subPos + 2 <= elemEnd) {
+                                    uint8_t subId = payload[subPos];
+                                    uint8_t subLen = payload[subPos + 1];
+                                    subPos += 2;
+                                    if (subPos + subLen > elemEnd) break;
+                                    if (subId == 0x06 && subLen >= 1) { // Multi-AP Extension subelement
+                                        uint8_t ext = payload[subPos];
+                                        if (ext & 0x20) mesh |= WIFI_AP_MESH_FRONTHAUL;
+                                        if (ext & 0x40) mesh |= WIFI_AP_MESH_BACKHAUL;
+                                        if (ext & 0x80) mesh |= WIFI_AP_MESH_BSTA;
+                                    }
+                                    subPos += subLen;
                                 }
                             }
                         }
@@ -745,6 +773,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             entry.record.caps = (subtype == 8)
                                 ? static_cast<uint8_t>(caps | (entry.record.caps & (WIFI_AP_CAP_WPS | WIFI_AP_CAP_WPS_LOCK)))
                                 : static_cast<uint8_t>(entry.record.caps | caps);
+                            entry.record.mesh = (subtype == 8) ? mesh : static_cast<uint8_t>(entry.record.mesh | mesh);
                             if (country[0] != '\0') {
                                 entry.record.country[0] = country[0];
                                 entry.record.country[1] = country[1];
@@ -791,6 +820,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             s_ap_records[idx].record.mlo = isMlo;
                             s_ap_records[idx].record.channelUtil = channelUtil;
                             s_ap_records[idx].record.caps = caps;
+                            s_ap_records[idx].record.mesh = mesh;
                             if (country[0] != '\0') {
                                 s_ap_records[idx].record.country[0] = country[0];
                                 s_ap_records[idx].record.country[1] = country[1];

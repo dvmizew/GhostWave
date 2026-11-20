@@ -50,6 +50,13 @@ struct FmStationRecord {
 #define WIFI_AP_CAP_11V       0x40  // 802.11v BSS Transition (IE 127 bit 19)
 #define WIFI_AP_CAP_11R       0x80  // 802.11r Fast Transition (IE 54)
 
+// Bitmask flags for WifiApRecord::mesh
+#define WIFI_AP_MESH_EASYMESH  0x01  // Wi-Fi Alliance Multi-AP / EasyMesh (50:6F:9A:1B)
+#define WIFI_AP_MESH_FRONTHAUL 0x02  // EasyMesh Fronthaul BSS (subelem 0x06 bit 5)
+#define WIFI_AP_MESH_BACKHAUL  0x04  // EasyMesh Backhaul BSS (subelem 0x06 bit 6)
+#define WIFI_AP_MESH_BSTA      0x08  // EasyMesh Backhaul STA (subelem 0x06 bit 7)
+#define WIFI_AP_MESH_11S       0x10  // IEEE 802.11s Native Mesh (IE 113 / 114)
+
 struct WifiApRecord {
     char     ssid[33];                                       // Up to 32 characters + null terminator (IEEE 802.11 standard)
     uint8_t  bssid[6];
@@ -61,6 +68,7 @@ struct WifiApRecord {
     bool     mlo;                                            // Multi-Link Operation (MLO) flag
     uint8_t  channelUtil;                                    // QBSS Load Channel Utilization 0..100% (0xFF = not advertised)
     uint8_t  caps;                                           // Bitmask of WIFI_AP_CAP_*
+    uint8_t  mesh;                                           // Bitmask of WIFI_AP_MESH_*
     char     country[3];                                     // 2-char ISO country code (empty if absent)
     int8_t   maxTxPower;                                     // Country IE max TX power in dBm (0 = unknown)
     char     wpsModel[24];                                   // WPS Model/Device/Manufacturer string (empty if absent)

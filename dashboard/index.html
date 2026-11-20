@@ -1409,6 +1409,7 @@
                 isMlo: isMlo,
                 channelUtil: (ap.util !== undefined && ap.util >= 0) ? ap.util : (old ? old.channelUtil : -1),
                 caps: (ap.caps !== undefined) ? ap.caps : (old ? old.caps : 0),
+                mesh: (ap.mesh !== undefined) ? ap.mesh : (old ? old.mesh : 0),
                 country: (ap.cc && ap.cc.length > 0) ? ap.cc : (old ? old.country : ""),
                 maxTxPower: (ap.txp !== undefined && ap.txp > 0) ? ap.txp : (old ? old.maxTxPower : 0),
                 wpsModel: (ap.wps && ap.wps.length > 0) ? ap.wps : (old ? old.wpsModel : ""),
@@ -1707,6 +1708,21 @@
       });
     }
 
+    function getMeshBadge(mesh) {
+      if (!mesh) return '';
+      if (mesh & 0x10) {
+        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="IEEE 802.11s Native Mesh node">802.11s</span>`;
+      }
+      if (mesh & 0x01) {
+        const fh = (mesh & 0x02) !== 0;
+        const bh = (mesh & 0x04) !== 0;
+        const role = (fh && bh) ? 'Fronthaul + Backhaul' : (bh ? 'Backhaul BSS' : (fh ? 'Fronthaul BSS' : 'EasyMesh'));
+        const label = (bh && !fh) ? 'Mesh BH' : 'Mesh';
+        return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-950 text-teal-300 border border-teal-700" title="Wi-Fi EasyMesh / Multi-AP (${role})">${label}</span>`;
+      }
+      return '';
+    }
+
     function detectEvilTwinBssids() {
       const authRank = { OPEN: 0, WEP: 1, WPA: 2, WPA2: 3, WPA3: 4 };
       const bySsid = new Map();
@@ -1829,7 +1845,7 @@
       document.getElementById("modalTitle").innerText = ap.ssid;
       document.getElementById("modalSubtitle").innerText = `BSSID: ${ap.bssid} · ${apVendor.label}`;
 
-      document.getElementById("modalBadge").innerHTML = `${getAuthBadge(ap.auth)} ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}`;
+      document.getElementById("modalBadge").innerHTML = `${getAuthBadge(ap.auth)} ${getWifiGenBadge(ap.wifiStd, ap.isMlo)} ${getMeshBadge(ap.mesh)}`;
 
       const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
       const barColor = ap.rssi >= -65 ? "bg-emerald-400" : ap.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
@@ -1958,6 +1974,14 @@
           ? `<span class="text-slate-300">Locked</span>`
           : `<span class="text-amber-400">Enabled</span>`) + (ap.wpsModel ? ` <span class="text-slate-400 font-normal text-[10px]">· ${escapeHtml(ap.wpsModel)}</span>` : '')
         : `<span class="text-slate-500">Off</span>`;
+      const meshRole = (ap.mesh & 0x10)
+        ? "802.11s"
+        : ((ap.mesh & 0x01)
+          ? (((ap.mesh & 0x02) && (ap.mesh & 0x04)) ? "Mesh FH+BH" : ((ap.mesh & 0x04) ? "Mesh BH" : ((ap.mesh & 0x02) ? "Mesh FH" : "EasyMesh")))
+          : "");
+      const sameEssNodes = (ap.ssid && ap.ssid !== "[Hidden SSID]")
+        ? Array.from(discoveredAps.values()).filter(a => a.ssid === ap.ssid && a.auth === ap.auth).length
+        : 1;
       const roamList = [];
       if (apCaps & 0x20) roamList.push("11k");
       if (apCaps & 0x40) roamList.push("11v");
@@ -1966,6 +1990,8 @@
       if (ap.country) regParts.push(escapeHtml(ap.country));
       if (ap.maxTxPower > 0) regParts.push(`${ap.maxTxPower} dBm`);
       const roamRegLabel = [
+        meshRole,
+        sameEssNodes > 1 ? `${sameEssNodes} nodes` : "",
         roamList.length ? roamList.join("/") : "",
         regParts.length ? regParts.join(" · ") : ""
       ].filter(Boolean).join(" · ") || "--";
@@ -2241,6 +2267,7 @@
               <div class="flex items-center space-x-2">
                 <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
                 ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}
+                ${getMeshBadge(ap.mesh)}
                 ${evilPill}
               </div>
             </td>
