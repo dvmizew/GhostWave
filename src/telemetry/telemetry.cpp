@@ -87,10 +87,10 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
     }
 
     int offset = snprintf(outBuffer, maxLen,
-        "{\"node\":\"ghostwave\",\"mode\":\"sweep\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"deauth_pkts\":%u,\"deauth_ch\":%u,\"fm\":[",
+        "{\"node\":\"ghostwave\",\"mode\":\"sweep\",\"seq\":%u,\"uptime_ms\":%lu,\"sweep_ms\":%u,\"tea_err\":%u,\"ble_devs\":%u,\"ble_rssi\":%d,\"deauth_pkts\":%u,\"deauth_ch\":%u,\"lock_ch\":%u,\"fm\":[",
         snapshot.seq, static_cast<unsigned long>(snapshot.timestampMs),
         snapshot.sweepDurationMs, snapshot.teaError, snapshot.bleDevices, snapshot.bleMaxRssi,
-        snapshot.wifiDeauthPkts, snapshot.wifiDeauthChannel);
+        snapshot.wifiDeauthPkts, snapshot.wifiDeauthChannel, snapshot.wifiLockChannel);
 
     if (offset < 0 || static_cast<size_t>(offset) >= maxLen) {
         return 0;
@@ -165,18 +165,25 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         }
     }
 
-    for (uint8_t i = 0; i < snapshot.apCount && i < MAX_DISCOVERED_APS && static_cast<size_t>(offset) + 160 < maxLen; i++) {
+    for (uint8_t i = 0; i < snapshot.apCount && i < MAX_DISCOVERED_APS && static_cast<size_t>(offset) + 240 < maxLen; i++) {
         const WifiApRecord &ap = snapshot.apList[i];
         char cleanSsid[33];
+        char cleanWps[24];
         sanitizeJsonStr(ap.ssid, cleanSsid, sizeof(cleanSsid));
+        sanitizeJsonStr(ap.wpsModel, cleanWps, sizeof(cleanWps));
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\",\"sta\":%u,\"wifi\":%u,\"mlo\":%s}",
+            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\",\"sta\":%u,\"wifi\":%u,\"mlo\":%s,\"util\":%d,\"caps\":%u,\"cc\":\"%s\",\"txp\":%d,\"wps\":\"%s\"}",
             (i == 0) ? "" : ",",
             cleanSsid,
             ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
             ap.channel, ap.rssi, getAuthModeStr(ap.authMode), ap.staCount,
             ap.wifiStd,
-            ap.mlo ? "true" : "false");
+            ap.mlo ? "true" : "false",
+            (ap.channelUtil == 0xFF) ? -1 : static_cast<int>(ap.channelUtil),
+            ap.caps,
+            ap.country,
+            ap.maxTxPower,
+            cleanWps);
         if (written < 0 || static_cast<size_t>(offset + written) + 4 >= maxLen) {
             break;
         }
@@ -191,17 +198,40 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         }
     }
 
-    for (uint8_t i = 0; i < snapshot.clientCount && i < MAX_DISCOVERED_CLIENTS && static_cast<size_t>(offset) + 180 < maxLen; i++) {
+    for (uint8_t i = 0; i < snapshot.clientCount && i < MAX_DISCOVERED_CLIENTS && static_cast<size_t>(offset) + 210 < maxLen; i++) {
         const WifiClientRecord &cli = snapshot.clientList[i];
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"tx\":%u,\"rx\":%u,\"txb\":%lu,\"rxb\":%lu,\"rty\":%u,\"phy\":%u,\"mcs\":%u,\"rate\":%u,\"wifi\":%u,\"flg\":%u}",
+            "%s{\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"tx\":%u,\"rx\":%u,\"txb\":%lu,\"rxb\":%lu,\"rty\":%u,\"phy\":%u,\"mcs\":%u,\"rate\":%u,\"wifi\":%u,\"flg\":%u,\"eap\":%u}",
             (i == 0) ? "" : ",",
             cli.mac[0], cli.mac[1], cli.mac[2], cli.mac[3], cli.mac[4], cli.mac[5],
             cli.bssid[0], cli.bssid[1], cli.bssid[2], cli.bssid[3], cli.bssid[4], cli.bssid[5],
             cli.channel, cli.rssi,
             cli.txPkts, cli.rxPkts,
             static_cast<unsigned long>(cli.txBytes), static_cast<unsigned long>(cli.rxBytes),
-            cli.retryPkts, cli.phyMode, cli.mcs, cli.maxRateMbps, cli.wifiStd, cli.flags);
+            cli.retryPkts, cli.phyMode, cli.mcs, cli.maxRateMbps, cli.wifiStd, cli.flags, cli.eapolMask);
+        if (written < 0 || static_cast<size_t>(offset + written) + 4 >= maxLen) {
+            break;
+        }
+        offset += written;
+    }
+
+    // 5b. Directed Wi-Fi Probe Requests (strictly separate from associated clients)
+    if (static_cast<size_t>(offset) + 60 < maxLen) {
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset), "],\"probes\":[");
+        if (written > 0 && static_cast<size_t>(offset + written) + 4 < maxLen) {
+            offset += written;
+        }
+    }
+
+    for (uint8_t i = 0; i < snapshot.probeCount && i < MAX_DISCOVERED_PROBES && static_cast<size_t>(offset) + 110 < maxLen; i++) {
+        const WifiProbeRecord &pr = snapshot.probeList[i];
+        char cleanSsid[33];
+        sanitizeJsonStr(pr.ssid, cleanSsid, sizeof(cleanSsid));
+        int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
+            "%s{\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ssid\":\"%s\",\"rssi\":%d,\"ch\":%u}",
+            (i == 0) ? "" : ",",
+            pr.mac[0], pr.mac[1], pr.mac[2], pr.mac[3], pr.mac[4], pr.mac[5],
+            cleanSsid, pr.rssi, pr.channel);
         if (written < 0 || static_cast<size_t>(offset + written) + 4 >= maxLen) {
             break;
         }

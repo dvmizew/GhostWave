@@ -76,6 +76,13 @@ static void handleSerialCommand(const char *cmd) {
         if (s >= 3 && s <= 15) {
             rf_scanner_set_bug_sensitivity(s);
         }
+    } else if (strncmp(cmd, "WIFI_LOCK ", 10) == 0) {
+        int ch = atoi(cmd + 10);
+        if (ch >= 0 && ch <= GHOSTWAVE_WIFI_CHANNELS) {
+            rf_scanner_set_wifi_lock(static_cast<uint8_t>(ch));
+        }
+    } else if (strcmp(cmd, "WIFI_UNLOCK") == 0) {
+        rf_scanner_set_wifi_lock(0);
     }
 }
 

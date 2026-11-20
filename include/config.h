@@ -16,9 +16,10 @@
 #define I2C_STANDARD_CLOCK      100000   // 100 kHz Standard-Mode
 
 // Static buffer size for telemetry JSON framing
-#define TELEMETRY_BUFFER_SIZE   6144
+#define TELEMETRY_BUFFER_SIZE   10240
 
 #define MAX_DISCOVERED_CLIENTS  12
+#define MAX_DISCOVERED_PROBES   8
 
 // RF SCANNER CONFIGURATION & CONSTANTS
 #define GHOSTWAVE_FM_BINS       128      // 128 frequency steps (Fine Scan)

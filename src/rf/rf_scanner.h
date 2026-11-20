@@ -21,6 +21,7 @@ void         rf_scanner_set_mute(bool mute);
 void         rf_scanner_set_mono(bool mono);
 void         rf_scanner_seek(bool seekUp);
 void         rf_scanner_set_bug_sensitivity(uint8_t minLevel);
+void         rf_scanner_set_wifi_lock(uint8_t channel);
 SystemOpMode rf_scanner_get_mode();
 
 #endif // GHOSTWAVE_RF_RF_SCANNER_H

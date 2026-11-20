@@ -385,6 +385,8 @@
           <span class="text-slate-500 text-[11px]" id="wifiTableCount">0 networks active</span>
           <span class="text-slate-700">|</span>
           <span id="wifiClientCountBadge" class="text-emerald-400 text-[11px]">0 connected</span>
+          <button id="wifiLockBadge" onclick="toggleWifiChannelLock(0)" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700 hover:bg-amber-900 transition" title="Click to unlock and resume 1..13 channel sweep"></button>
+          <span id="wifiEvilTwinBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700"></span>
           <span id="wifiDeauthBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700"></span>
         </div>
         <div class="flex items-center space-x-2">
@@ -421,6 +423,33 @@
         </table>
       </div>
     </section>
+
+    <!-- Directed Probe Requests (Strictly separate from associated clients) -->
+    <details id="wifiProbesSection" class="panel rounded-lg p-3">
+      <summary class="cursor-pointer flex items-center justify-between text-xs mono select-none list-none">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-300 font-semibold">DIRECTED PROBE REQUESTS</span>
+          <span id="wifiProbeCount" class="text-slate-500 text-[11px]">0 probes (unassociated devices searching for saved SSIDs)</span>
+        </div>
+        <span class="text-[10px] text-slate-500">Click to expand</span>
+      </summary>
+      <div class="overflow-x-auto mt-2 max-h-56 border-t border-[#1b1f2b] pt-2">
+        <table class="w-full text-left text-xs mono border-collapse">
+          <thead>
+            <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
+              <th class="py-1.5 px-3 font-semibold">DEVICE MAC</th>
+              <th class="py-1.5 px-3 font-semibold">PROBED SSID</th>
+              <th class="py-1.5 px-3 font-semibold">CH</th>
+              <th class="py-1.5 px-3 font-semibold">RSSI</th>
+              <th class="py-1.5 px-3 font-semibold">LAST SEEN</th>
+            </tr>
+          </thead>
+          <tbody id="wifiProbesBody" class="divide-y divide-[#161a24]">
+            <tr><td colspan="5" class="py-4 text-center text-slate-500">No directed probe requests captured yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </main>
 
   <!-- Tab 3: Bluetooth LE -->
@@ -437,15 +466,15 @@
           <span class="text-purple-400 text-[11px]">Window: 80ms / sweep</span>
         </div>
         <div class="grid grid-cols-3 gap-2 text-center mono my-2">
-          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433]">
+          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433] cursor-help" title="Total unique Bluetooth LE devices seen since you connected or cleared the list.">
             <div class="text-[10px] text-slate-500 uppercase tracking-wider">Total Discovered</div>
             <div id="bleTotalDevices" class="text-3xl font-bold text-purple-400 mt-1">0</div>
           </div>
-          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433]">
+          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433] cursor-help" title="Number of Bluetooth LE devices actively broadcasting right now in the latest 80ms scan.">
             <div class="text-[10px] text-slate-500 uppercase tracking-wider">Active Advertising</div>
             <div id="bleActiveCurrent" class="text-3xl font-bold text-white mt-1">0</div>
           </div>
-          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433]">
+          <div class="bg-[#12151e] p-3 rounded-lg border border-[#1f2433] cursor-help" title="Strongest Bluetooth LE signal detected in the latest scan. Closer to 0 dBm means closer to the ESP32.">
             <div class="text-[10px] text-slate-500 uppercase tracking-wider">Peak RSSI</div>
             <div id="blePeakRssi" class="text-3xl font-bold text-cyan-400 mt-1">--</div>
           </div>
@@ -818,6 +847,8 @@
     const discoveredAps = new Map();
     const discoveredBles = new Map();
     const discoveredClients = new Map();
+    const discoveredProbes = new Map();
+    let wifiLockChannel = 0;
 
     // Web Serial
     let port = null;
@@ -846,6 +877,9 @@
       connectBtn.classList.remove('opacity-40');
       disconnectBtn.disabled = true;
       disconnectBtn.classList.add('opacity-40');
+      wifiLockChannel = 0;
+      const lockBadge = document.getElementById('wifiLockBadge');
+      if (lockBadge) lockBadge.classList.add('hidden');
     }
 
     function setConnectedUI() {
@@ -1337,6 +1371,20 @@
           }
         }
 
+        // Wi-Fi Channel Lock state
+        if (d.lock_ch !== undefined) {
+          wifiLockChannel = d.lock_ch || 0;
+          const lockBadge = document.getElementById('wifiLockBadge');
+          if (lockBadge) {
+            if (wifiLockChannel > 0) {
+              lockBadge.classList.remove("hidden");
+              lockBadge.innerText = `LOCKED CH ${wifiLockChannel} ×`;
+            } else {
+              lockBadge.classList.add("hidden");
+            }
+          }
+        }
+
         // Wi-Fi APs
         let apChanged = false;
         if (Array.isArray(d.aps)) {
@@ -1359,6 +1407,11 @@
                 staCount: (ap.sta !== undefined) ? ap.sta : (old ? old.staCount : 0),
                 wifiStd: wifiGen,
                 isMlo: isMlo,
+                channelUtil: (ap.util !== undefined && ap.util >= 0) ? ap.util : (old ? old.channelUtil : -1),
+                caps: (ap.caps !== undefined) ? ap.caps : (old ? old.caps : 0),
+                country: (ap.cc && ap.cc.length > 0) ? ap.cc : (old ? old.country : ""),
+                maxTxPower: (ap.txp !== undefined && ap.txp > 0) ? ap.txp : (old ? old.maxTxPower : 0),
+                wpsModel: (ap.wps && ap.wps.length > 0) ? ap.wps : (old ? old.wpsModel : ""),
                 seenCount: (old ? old.seenCount : 0) + 1,
                 lastSeen: Date.now()
               });
@@ -1391,6 +1444,23 @@
               maxRateMbps: (c.rate !== undefined) ? c.rate : (old ? old.maxRateMbps : 0),
               wifiStd: (c.wifi !== undefined) ? c.wifi : (old ? old.wifiStd : 0),
               flags: (c.flg !== undefined) ? c.flg : (old ? old.flags : 0),
+              eapolMask: (c.eap !== undefined) ? c.eap : (old ? old.eapolMask : 0),
+              lastSeen: Date.now()
+            });
+          }
+        }
+
+        // Directed Probe Requests (separate from associated clients)
+        let probesChanged = false;
+        if (Array.isArray(d.probes)) {
+          probesChanged = true;
+          for (const p of d.probes) {
+            if (!p.mac || !p.ssid) continue;
+            discoveredProbes.set(`${p.mac}|${p.ssid}`, {
+              mac: p.mac,
+              ssid: p.ssid,
+              rssi: p.rssi,
+              ch: p.ch,
               lastSeen: Date.now()
             });
           }
@@ -1399,6 +1469,9 @@
         if (apChanged || clientChanged) {
           renderWifiTable();
           if (apChanged) updateWifiChart();
+        }
+        if (probesChanged) {
+          renderWifiProbes();
         }
 
         // 3. BLE Telemetry
@@ -1634,6 +1707,86 @@
       });
     }
 
+    function detectEvilTwinBssids() {
+      const authRank = { OPEN: 0, WEP: 1, WPA: 2, WPA2: 3, WPA3: 4 };
+      const bySsid = new Map();
+      for (const ap of discoveredAps.values()) {
+        if (!ap.ssid || ap.ssid === "[Hidden SSID]") continue;
+        if (!bySsid.has(ap.ssid)) bySsid.set(ap.ssid, []);
+        bySsid.get(ap.ssid).push(ap);
+      }
+      const flagged = new Set();
+      for (const group of bySsid.values()) {
+        if (group.length < 2) continue;
+        const maxRank = Math.max(...group.map(a => authRank[a.auth] ?? 0));
+        if (maxRank >= 3) {
+          for (const a of group) {
+            if ((authRank[a.auth] ?? 0) <= 1) flagged.add(a.bssid);
+          }
+        }
+      }
+      return flagged;
+    }
+
+    function formatEapolBadge(mask) {
+      if (!mask) return '';
+      const steps = [];
+      if (mask & 0x01) steps.push('M1');
+      if (mask & 0x02) steps.push('M2');
+      if (mask & 0x04) steps.push('M3');
+      if (mask & 0x08) steps.push('M4');
+      const complete = (mask & 0x0F) === 0x0F;
+      const cls = complete
+        ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
+        : 'bg-amber-950 text-amber-300 border-amber-700';
+      return `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold border ${cls}" title="IEEE 802.11i EAPOL 4-Way Handshake captured">EAPOL ${steps.join('/')}</span>`;
+    }
+
+    window.toggleWifiChannelLock = function(ch) {
+      if (!port) return;
+      const target = (ch >= 1 && ch <= 13 && wifiLockChannel !== ch) ? ch : 0;
+      sendSerialCommand(target > 0 ? `WIFI_LOCK ${target}` : "WIFI_UNLOCK");
+      wifiLockChannel = target;
+      const lockBadge = document.getElementById('wifiLockBadge');
+      if (lockBadge) {
+        if (wifiLockChannel > 0) {
+          lockBadge.classList.remove("hidden");
+          lockBadge.innerText = `LOCKED CH ${wifiLockChannel} ×`;
+        } else {
+          lockBadge.classList.add("hidden");
+        }
+      }
+      if (activeInspectedBssid) openApModal(activeInspectedBssid, false);
+    };
+
+    function renderWifiProbes() {
+      const tbody = document.getElementById('wifiProbesBody');
+      const countEl = document.getElementById('wifiProbeCount');
+      if (!tbody || !countEl) return;
+      countEl.innerText = `${discoveredProbes.size} probe${discoveredProbes.size === 1 ? '' : 's'} (unassociated devices searching for saved SSIDs)`;
+      if (discoveredProbes.size === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500">No directed probe requests captured yet.</td></tr>`;
+        return;
+      }
+      const list = Array.from(discoveredProbes.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+      tbody.innerHTML = list.map(p => {
+        const ago = Math.round((Date.now() - p.lastSeen) / 1000);
+        const vendor = lookupMacVendor(p.mac, 0);
+        const vTag = vendor.isRandom
+          ? `<span class="ml-1.5 px-1 py-0.2 rounded text-[9px] bg-amber-950/80 text-amber-300 border border-amber-800/80">Private</span>`
+          : `<span class="ml-1.5 text-[10px] text-slate-400">${escapeHtml(vendor.label)}</span>`;
+        return `
+          <tr class="hover:bg-[#141824]">
+            <td class="py-1.5 px-3 text-cyan-300 select-all">${escapeHtml(p.mac)}${vTag}</td>
+            <td class="py-1.5 px-3 text-white font-semibold">${escapeHtml(p.ssid)}</td>
+            <td class="py-1.5 px-3 text-emerald-400">Ch ${p.ch}</td>
+            <td class="py-1.5 px-3 text-slate-300">${p.rssi} dBm</td>
+            <td class="py-1.5 px-3 text-slate-500">${ago === 0 ? 'just now' : ago + 's ago'}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
     function setModalWidth(wide) {
       const box = document.getElementById("modalBox");
       if (!box) return;
@@ -1742,12 +1895,13 @@
                         ${pwrBadge}
                         ${encBadge}
                         ${qosBadge}
+                        ${formatEapolBadge(c.eapolMask)}
                       </div>
                       <span class="text-[10px] text-slate-500">Ch ${c.ch} · ${cAgo === 0 ? "just now" : cAgo + "s ago"}</span>
                     </div>
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
-                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b] cursor-help" title="Signal strength of this device (closer to 0 dBm = stronger/closer). TX means measured directly from the device; AP means only router-to-device packets were seen.">
                         <div class="text-slate-500 uppercase flex items-center justify-between">
                           <span>Signal</span>
                           <span class="${hasTxRssi ? 'text-emerald-400' : 'text-slate-500'}">${hasTxRssi ? 'TX' : 'AP'}</span>
@@ -1757,17 +1911,17 @@
                           <div class="${cBarColor} h-full" style="width: ${cQual}%"></div>
                         </div>
                       </div>
-                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b] cursor-help" title="Packets and total bytes sent by this device to the router (upload).">
                         <div class="text-slate-500 uppercase">Uplink (TX)</div>
                         <div class="text-cyan-300 font-bold mt-0.5">${totalTx} pkts</div>
                         <div class="text-slate-400">${formatBytes(c.txBytes)}</div>
                       </div>
-                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b] cursor-help" title="Packets and total bytes sent by the router to this device (download).">
                         <div class="text-slate-500 uppercase">Downlink (RX)</div>
                         <div class="text-purple-300 font-bold mt-0.5">${totalRx} pkts</div>
                         <div class="text-slate-400">${formatBytes(c.rxBytes)}</div>
                       </div>
-                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b]">
+                      <div class="bg-[#0e121d] px-2 py-1.5 rounded border border-[#171d2b] cursor-help" title="Packets this device had to re-send due to interference or weak signal. Lower % means a cleaner connection.">
                         <div class="text-slate-500 uppercase">TX Retries</div>
                         <div class="${retryColor} font-bold mt-0.5">${c.retryPkts || 0} <span class="font-normal">(${retryPct}%)</span></div>
                         <div class="text-slate-500 truncate">${hasTxRssi ? 'Uplink verified' : 'Downlink only'}</div>
@@ -1792,29 +1946,72 @@
         `;
       }
 
+      const apCaps = ap.caps || 0;
+      const bwLabel = (apCaps & 0x01) ? "40 MHz" : "20 MHz";
+      const pmfLabel = (apCaps & 0x04)
+        ? `<span class="text-emerald-400">Required (802.11w)</span>`
+        : ((apCaps & 0x02)
+          ? `<span class="text-cyan-300">Capable (802.11w)</span>`
+          : `<span class="text-amber-400">None (Deauth risk)</span>`);
+      const wpsLabel = (apCaps & 0x08)
+        ? ((apCaps & 0x10)
+          ? `<span class="text-slate-300">Locked</span>`
+          : `<span class="text-amber-400">Enabled</span>`) + (ap.wpsModel ? ` <span class="text-slate-400 font-normal text-[10px]">· ${escapeHtml(ap.wpsModel)}</span>` : '')
+        : `<span class="text-slate-500">Off</span>`;
+      const roamList = [];
+      if (apCaps & 0x20) roamList.push("11k");
+      if (apCaps & 0x40) roamList.push("11v");
+      if (apCaps & 0x80) roamList.push("11r");
+      const regParts = [];
+      if (ap.country) regParts.push(escapeHtml(ap.country));
+      if (ap.maxTxPower > 0) regParts.push(`${ap.maxTxPower} dBm`);
+      const roamRegLabel = [
+        roamList.length ? roamList.join("/") : "",
+        regParts.length ? regParts.join(" · ") : ""
+      ].filter(Boolean).join(" · ") || "--";
+      const utilValid = ap.channelUtil !== undefined && ap.channelUtil >= 0;
+      const utilColor = !utilValid ? "text-slate-500" : (ap.channelUtil >= 70 ? "text-rose-400" : (ap.channelUtil >= 40 ? "text-amber-400" : "text-emerald-400"));
+      const isEvilTwin = detectEvilTwinBssids().has(ap.bssid);
+      const evilBanner = isEvilTwin
+        ? `<div class="p-2 rounded bg-rose-950/70 border border-rose-700 text-rose-200 text-[11px] font-semibold">EVIL TWIN WARNING: Same SSID is broadcast elsewhere with WPA2/WPA3, but this BSSID uses ${escapeHtml(ap.auth)}.</div>`
+        : '';
+
       modalBodyEl.innerHTML = `
+        ${evilBanner}
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Channel / Freq</div>
-            <div class="text-white font-bold mt-0.5">Ch ${ap.ch} (${ap.freq} MHz)</div>
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Wi-Fi radio channel, center frequency, and channel bandwidth (20 MHz is standard; 40 MHz is wider/faster but more prone to interference).">
+            <div class="text-[10px] text-slate-500 uppercase">Channel / Width</div>
+            <div class="text-white font-bold mt-0.5">Ch ${ap.ch} <span class="text-slate-400 font-normal text-[10px]">(${ap.freq} MHz · ${bwLabel})</span></div>
           </div>
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Signal power in dBm (closer to 0 is stronger) and SNR (how far the signal stands above background radio noise).">
             <div class="text-[10px] text-slate-500 uppercase">Signal / SNR</div>
-            <div class="text-emerald-400 font-bold mt-0.5">${ap.rssi} dBm <span class="text-slate-400 font-normal text-[10px]">(${apSnr} dB)</span></div>
+            <div class="text-emerald-400 font-bold mt-0.5">${ap.rssi} dBm <span class="text-slate-400 font-normal text-[10px]">(${apSnr} dB · ${quality}%)</span></div>
           </div>
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Quality Est.</div>
-            <div class="text-emerald-400 font-bold mt-0.5">${quality}%</div>
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="How busy this Wi-Fi channel is, as reported directly by the router (0% = idle, 100% = saturated). Shows -- if the router does not broadcast this metric.">
+            <div class="text-[10px] text-slate-500 uppercase">Airtime (QBSS)</div>
+            <div class="${utilColor} font-bold mt-0.5">${utilValid ? `${ap.channelUtil}% busy` : '--'}</div>
           </div>
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Protected Management Frames (802.11w). Protects connected devices against Wi-Fi deauthentication (disconnect) attacks.">
+            <div class="text-[10px] text-slate-500 uppercase">PMF / Deauth Guard</div>
+            <div class="font-bold mt-0.5 text-[11px]">${pmfLabel}</div>
+          </div>
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Wi-Fi Protected Setup status and router model name if advertised. Enabled/unlocked WPS can be a security weakness.">
+            <div class="text-[10px] text-slate-500 uppercase">WPS / Device</div>
+            <div class="font-bold mt-0.5 text-[11px] truncate">${wpsLabel}</div>
+          </div>
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Fast roaming/mesh features (802.11k/v/r for smooth switching between access points) plus the router's regulatory country code and max transmit power.">
+            <div class="text-[10px] text-slate-500 uppercase">Roaming / Reg</div>
+            <div class="text-slate-200 font-bold mt-0.5 text-[11px]">${roamRegLabel}</div>
+          </div>
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="How many periodic announcement (beacon) frames have been received from this router since discovery.">
             <div class="text-[10px] text-slate-500 uppercase">Beacons Seen</div>
             <div class="text-slate-300 font-bold mt-0.5">${ap.seenCount}</div>
           </div>
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Time elapsed since the last packet was heard from this router.">
             <div class="text-[10px] text-slate-500 uppercase">Last Seen</div>
             <div class="text-slate-400 font-bold mt-0.5">${ago === 0 ? "just now" : ago + "s ago"}</div>
           </div>
-          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2 rounded border border-[#171d2b] cursor-help" title="Devices actively observed talking to this router vs. total connected stations reported by the router itself (if supported).">
             <div class="text-[10px] text-slate-500 uppercase">Connected Clients</div>
             <div class="text-cyan-300 font-bold mt-0.5">${associated.length} active <span class="text-slate-400 font-normal text-xs">/ ${ap.staCount !== undefined ? ap.staCount : '0'} AP</span></div>
           </div>
@@ -1826,12 +2023,24 @@
       `;
       if (!showOverlay) modalBodyEl.scrollTop = prevScrollTop;
 
-      if (showOverlay) {
-        document.getElementById("modalFooter").innerHTML = `
+      const isLockedHere = wifiLockChannel === ap.ch;
+      const canLock = ap.ch >= 1 && ap.ch <= 13;
+      const footerEl = document.getElementById("modalFooter");
+      const lockStateKey = `${ap.ch}:${isLockedHere}:${canLock}`;
+      if (footerEl && (showOverlay || footerEl.dataset.lockState !== lockStateKey)) {
+        footerEl.dataset.lockState = lockStateKey;
+        const lockBtnHtml = canLock ? `
+          <button onclick="toggleWifiChannelLock(${ap.ch})" class="px-3 py-1 rounded ${isLockedHere ? 'bg-amber-950 hover:bg-amber-900 text-amber-300 border-amber-700' : 'bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border-cyan-700'} border transition font-semibold">
+            ${isLockedHere ? `Unlock Ch ${ap.ch}` : `Lock Ch ${ap.ch} (Focus)`}
+          </button>` : '';
+        footerEl.innerHTML = `
+          ${lockBtnHtml}
           <button onclick="closeInspectorModal()" class="px-3 py-1 rounded bg-[#141824] hover:bg-[#1c2234] text-slate-300 border border-[#232938] transition">
             Close
           </button>
         `;
+      }
+      if (showOverlay) {
         openInspectorModal();
       }
     };
@@ -1856,19 +2065,19 @@
 
       document.getElementById("modalBody").innerHTML = `
         <div class="grid grid-cols-2 gap-2">
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Raw FM signal strength measured by the TEA5767 radio chip on a 0 to 15 scale (higher = stronger reception).">
             <div class="text-[10px] text-slate-500 uppercase">ADC Signal Level</div>
             <div class="text-white font-bold mt-0.5">${st.rssi} / 15 (~${st.estDbuv} dBµV)</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Overall reception rating derived from the FM signal strength.">
             <div class="text-[10px] text-slate-500 uppercase">Signal Quality</div>
             <div class="text-cyan-400 font-bold mt-0.5">${st.quality}</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Intermediate Frequency tuning lock. 225 kHz Lock confirms the tuner is centered accurately on a real FM station.">
             <div class="text-[10px] text-slate-500 uppercase">IF Frequency Lock</div>
             <div class="text-slate-300 font-bold mt-0.5">${st.ifCount !== null ? (st.ifLock ? "225 kHz Lock" : "Offset: " + st.ifCount) : "--"}</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Whether this FM station is currently transmitting cleanly or fading out.">
             <div class="text-[10px] text-slate-500 uppercase">Carrier Status</div>
             <div class="text-emerald-400 font-bold mt-0.5">${st.status}</div>
           </div>
@@ -1911,19 +2120,19 @@
 
       document.getElementById("modalBody").innerHTML = `
         <div class="grid grid-cols-2 gap-2">
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Hardware or randomized Bluetooth address identifying this device.">
             <div class="text-[10px] text-slate-500 uppercase">MAC Address</div>
             <div class="text-purple-300 font-bold mt-0.5 select-all">${b.addr}</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Rough distance estimate based on Bluetooth signal strength (walls and body blocking affect accuracy).">
             <div class="text-[10px] text-slate-500 uppercase">Estimated Proximity</div>
             <div class="text-white font-bold mt-0.5">${prox}</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Received Bluetooth signal strength in dBm (closer to 0 dBm means stronger/closer).">
             <div class="text-[10px] text-slate-500 uppercase">Signal RSSI</div>
             <div class="text-emerald-400 font-bold mt-0.5">${b.rssi} dBm (${quality}%)</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b]">
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="How many times this Bluetooth device was heard and how recently.">
             <div class="text-[10px] text-slate-500 uppercase">Observations</div>
             <div class="text-slate-300 font-bold mt-0.5">${b.seenCount}x (${ago === 0 ? "just now" : ago + "s ago"})</div>
           </div>
@@ -1970,6 +2179,17 @@
       const cliBadge = document.getElementById('wifiClientCountBadge');
       if (cliBadge) cliBadge.innerText = `${discoveredClients.size} connected`;
 
+      const evilTwins = detectEvilTwinBssids();
+      const evilBadge = document.getElementById('wifiEvilTwinBadge');
+      if (evilBadge) {
+        if (evilTwins.size > 0) {
+          evilBadge.classList.remove('hidden');
+          evilBadge.innerText = `EVIL TWIN (${evilTwins.size})`;
+        } else {
+          evilBadge.classList.add('hidden');
+        }
+      }
+
       if (discoveredAps.size === 0) {
         tbody.innerHTML = `
           <tr>
@@ -2008,12 +2228,20 @@
           clientsBadge = `<span class="text-slate-600 text-xs">0</span>`;
         }
 
+        const evilPill = evilTwins.has(ap.bssid)
+          ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-700">EVIL TWIN</span>`
+          : '';
+        const bwPill = ((ap.caps || 0) & 0x01)
+          ? `<span class="ml-1 text-[9px] text-slate-400">40MHz</span>`
+          : '';
+
         html += `
           <tr class="hover:bg-[#141824] transition-colors cursor-pointer" onclick="openApModal('${escapeHtml(ap.bssid)}')">
             <td class="py-2.5 px-3 font-semibold text-white">
               <div class="flex items-center space-x-2">
                 <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
                 ${getWifiGenBadge(ap.wifiStd, ap.isMlo)}
+                ${evilPill}
               </div>
             </td>
             <td class="py-2.5 px-3 text-cyan-300 select-all">${escapeHtml(ap.bssid)}</td>
@@ -2021,7 +2249,7 @@
             <td class="py-2.5 px-3">
               <span class="px-1.5 py-0.5 rounded text-[10px] bg-[#1a2130] text-emerald-400 font-bold border border-[#2b354c]">
                 Ch ${ap.ch}
-              </span>
+              </span>${bwPill}
             </td>
             <td class="py-2.5 px-3 text-slate-400">${ap.freq} MHz</td>
             <td class="py-2.5 px-3 font-semibold ${ap.rssi >= -70 ? 'text-emerald-400' : 'text-amber-400'}">${ap.rssi} dBm</td>
@@ -2170,9 +2398,11 @@
     document.getElementById('clearWifiBtn').addEventListener('click', () => {
       discoveredAps.clear();
       discoveredClients.clear();
+      discoveredProbes.clear();
       smoothedTraffic.fill(0);
       if (activeInspectedBssid) closeInspectorModal();
       renderWifiTable();
+      renderWifiProbes();
       updateWifiChart();
     });
 
@@ -2215,6 +2445,14 @@
           wifiPruned = true;
         }
       }
+      let probesPruned = false;
+      for (const [key, pr] of discoveredProbes.entries()) {
+        if (now - pr.lastSeen > WIFI_AP_TTL_MS) {
+          discoveredProbes.delete(key);
+          probesPruned = true;
+        }
+      }
+      if (probesPruned) renderWifiProbes();
       if (activeInspectedBssid && !discoveredAps.has(activeInspectedBssid)) {
         closeInspectorModal();
       }

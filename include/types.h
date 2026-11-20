@@ -40,6 +40,16 @@ struct FmStationRecord {
     bool    validIf;
 };
 
+// Bitmask flags for WifiApRecord::caps
+#define WIFI_AP_CAP_40MHZ     0x01  // 40 MHz HT Operation active
+#define WIFI_AP_CAP_PMF_CAP   0x02  // 802.11w PMF Capable (RSN MFPC)
+#define WIFI_AP_CAP_PMF_REQ   0x04  // 802.11w PMF Required (RSN MFPR)
+#define WIFI_AP_CAP_WPS       0x08  // WPS enabled (Vendor IE 00:50:F2:04)
+#define WIFI_AP_CAP_WPS_LOCK  0x10  // WPS AP Setup Locked (0x1057 == 1)
+#define WIFI_AP_CAP_11K       0x20  // 802.11k RRM Enabled Capabilities (IE 70)
+#define WIFI_AP_CAP_11V       0x40  // 802.11v BSS Transition (IE 127 bit 19)
+#define WIFI_AP_CAP_11R       0x80  // 802.11r Fast Transition (IE 54)
+
 struct WifiApRecord {
     char     ssid[33];                                       // Up to 32 characters + null terminator (IEEE 802.11 standard)
     uint8_t  bssid[6];
@@ -49,6 +59,11 @@ struct WifiApRecord {
     uint16_t staCount;                                       // QBSS BSS Load client station count (if reported by AP)
     uint8_t  wifiStd;                                        // Generation: 1=Legacy b/g, 4=Wi-Fi 4, 5=Wi-Fi 5, 6=Wi-Fi 6, 7=Wi-Fi 7
     bool     mlo;                                            // Multi-Link Operation (MLO) flag
+    uint8_t  channelUtil;                                    // QBSS Load Channel Utilization 0..100% (0xFF = not advertised)
+    uint8_t  caps;                                           // Bitmask of WIFI_AP_CAP_*
+    char     country[3];                                     // 2-char ISO country code (empty if absent)
+    int8_t   maxTxPower;                                     // Country IE max TX power in dBm (0 = unknown)
+    char     wpsModel[24];                                   // WPS Model/Device/Manufacturer string (empty if absent)
 };
 
 // Bitmask flags for WifiClientRecord::flags
@@ -70,11 +85,19 @@ struct WifiClientRecord {
     uint8_t  mcs;                                           // HT MCS index 0..7 (valid when phyMode==1)
     uint8_t  maxRateMbps;                                   // Peak observed client TX PHY rate in Mbps (0=unknown)
     uint8_t  flags;                                         // Bitmask of WIFI_CLI_FLAG_*
+    uint8_t  eapolMask;                                     // Bitmask of EAPOL 4-way handshake msgs (bit 0..3 = M1..M4)
     uint16_t txPkts;                                        // Frames transmitted by client (ToDS=1)
     uint16_t rxPkts;                                        // Frames received by client (FromDS=1)
     uint16_t retryPkts;                                     // Client TX retransmitted frames (Retry bit set)
     uint32_t txBytes;                                       // L2 bytes transmitted by client (sig_len - 4)
     uint32_t rxBytes;                                       // L2 bytes received by client (sig_len - 4)
+};
+
+struct WifiProbeRecord {
+    uint8_t  mac[6];                                        // Probing STA MAC (unassociated)
+    char     ssid[33];                                      // Directed SSID being probed
+    int8_t   rssi;
+    uint8_t  channel;
 };
 
 struct BleDeviceRecord {
@@ -94,12 +117,15 @@ struct SpectrumSnapshot {
     int8_t   wifiNoiseFloor[GHOSTWAVE_WIFI_CHANNELS];       // Hardware RF noise floor in dBm per channel
     uint16_t wifiDeauthPkts;                                // Deauth / disassoc frames detected in this sweep
     uint8_t  wifiDeauthChannel;                             // Channel of detected deauth activity (0 if none)
+    uint8_t  wifiLockChannel;                               // 0 = normal 1..13 sweep, 1..13 = locked channel
     uint16_t bleDevices;                                    // Active advertising BLE devices observed
     int8_t   bleMaxRssi;                                    // Peak BLE RSSI observed in dBm (-128 if none)
     uint8_t  apCount;                                       // Number of beacon APs discovered in this sweep
     WifiApRecord apList[MAX_DISCOVERED_APS];                // Discovered Wi-Fi networks (SSID, BSSID, Ch, RSSI, Auth)
     uint8_t  clientCount;                                   // Number of client devices discovered in this sweep
     WifiClientRecord clientList[MAX_DISCOVERED_CLIENTS];    // Associated Wi-Fi clients
+    uint8_t  probeCount;                                    // Directed Probe Requests captured (unassociated)
+    WifiProbeRecord probeList[MAX_DISCOVERED_PROBES];       // Separate from clientList
     uint8_t  bleCount;                                      // Number of unique BLE devices discovered
     BleDeviceRecord bleList[MAX_DISCOVERED_BLE];            // Discovered BLE devices (Name, MAC, RSSI)
     uint8_t  stationCount;                                  // Number of active FM carriers detected

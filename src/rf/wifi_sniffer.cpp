@@ -38,11 +38,19 @@ struct WifiClientEntry {
     uint32_t         lastSeenMs;
 };
 
+struct WifiProbeEntry {
+    WifiProbeRecord record;
+    uint32_t        lastSeenMs;
+};
+
 static WifiApEntry     s_ap_records[MAX_DISCOVERED_APS];
 static uint8_t         s_ap_count = 0;
 
 static WifiClientEntry s_client_records[MAX_DISCOVERED_CLIENTS];
 static uint8_t         s_client_count = 0;
+
+static WifiProbeEntry  s_probe_records[MAX_DISCOVERED_PROBES];
+static uint8_t         s_probe_count = 0;
 
 static inline uint32_t getNowMs() {
     return static_cast<uint32_t>(esp_timer_get_time() / 1000);
@@ -82,6 +90,71 @@ static inline void parseSsidIe(const uint8_t *data, uint8_t elen, char *outBuf) 
         outBuf[i] = (c >= 32 && c <= 126) ? c : '?';
     }
     outBuf[copyLen] = '\0';
+}
+
+static inline void parseWpsIe(const uint8_t *data, uint16_t len, uint8_t &caps, char *wpsModel, size_t modelSize) {
+    uint8_t bestPriority = 0;
+    uint16_t pos = 0;
+    while (pos + 4 <= len) {
+        uint16_t attrId  = (static_cast<uint16_t>(data[pos]) << 8) | data[pos + 1];
+        uint16_t attrLen = (static_cast<uint16_t>(data[pos + 2]) << 8) | data[pos + 3];
+        pos += 4;
+        if (pos + attrLen > len) break;
+
+        if (attrId == 0x1057 && attrLen >= 1 && data[pos] == 1) {
+            caps |= WIFI_AP_CAP_WPS_LOCK;
+        } else if (attrLen > 0 && (attrId == 0x1023 || attrId == 0x1011 || attrId == 0x1021)) {
+            uint8_t prio = (attrId == 0x1023) ? 3 : ((attrId == 0x1011) ? 2 : 1);
+            if (prio > bestPriority && modelSize > 1) {
+                char tmp[24];
+                size_t maxCopy = (modelSize < sizeof(tmp)) ? (modelSize - 1) : (sizeof(tmp) - 1);
+                size_t copyLen = (attrLen < maxCopy) ? attrLen : maxCopy;
+                size_t outLen = 0;
+                for (size_t i = 0; i < copyLen; i++) {
+                    char c = static_cast<char>(data[pos + i]);
+                    if (c >= 32 && c <= 126) {
+                        tmp[outLen++] = c;
+                    }
+                }
+                while (outLen > 0 && tmp[outLen - 1] == ' ') outLen--;
+                if (outLen > 0) {
+                    memcpy(wpsModel, tmp, outLen);
+                    wpsModel[outLen] = '\0';
+                    bestPriority = prio;
+                }
+            }
+        }
+        pos += attrLen;
+    }
+}
+
+static inline uint8_t parseEapolKeyMsg(const uint8_t *payload, uint16_t len, uint16_t fc, bool isQos) {
+    uint16_t hdrLen = 24 + (isQos ? 2 : 0) + ((isQos && ((fc & 0x8000) != 0)) ? 4 : 0);
+    if (len < hdrLen + 15) return 0; // 8B LLC/SNAP + 7B EAPOL-Key header
+
+    const uint8_t *llc = payload + hdrLen;
+    if (llc[0] != 0xAA || llc[1] != 0xAA || llc[2] != 0x03 ||
+        llc[3] != 0x00 || llc[4] != 0x00 || llc[5] != 0x00 ||
+        llc[6] != 0x88 || llc[7] != 0x8E) {
+        return 0;
+    }
+
+    const uint8_t *eapol = llc + 8;
+    if (eapol[1] != 0x03 || (eapol[4] != 0x02 && eapol[4] != 0xFE)) return 0;
+
+    uint16_t keyInfo = (static_cast<uint16_t>(eapol[5]) << 8) | eapol[6];
+    if ((keyInfo & 0x0008) == 0 || (keyInfo & 0x0C00) != 0) return 0; // Pairwise only; ignore Error/Request
+
+    bool inst = (keyInfo & 0x0040) != 0;
+    bool ack  = (keyInfo & 0x0080) != 0;
+    bool mic  = (keyInfo & 0x0100) != 0;
+    bool sec  = (keyInfo & 0x0200) != 0;
+
+    if (ack && !mic && !inst && !sec) return 0x01; // M1
+    if (!ack && mic && !inst && !sec) return 0x02; // M2
+    if (ack && mic && inst && (sec || eapol[4] == 0xFE)) return 0x04; // M3 (RSN: Secure=1, WPA1: Secure=0)
+    if (!ack && mic && !inst && sec)  return 0x08; // M4
+    return 0;
 }
 
 static inline uint8_t computePhyRateMbps(const wifi_pkt_rx_ctrl_t &rx) {
@@ -132,6 +205,7 @@ static inline void upsertAssociatedClient(
     bool isQos,
     uint8_t observedStd,
     uint8_t extraFlags,
+    uint8_t eapolBit,
     uint32_t nowMs)
 {
     if (isKnownAp(clientMac)) return;
@@ -222,6 +296,7 @@ static inline void upsertAssociatedClient(
     if (isEncrypted) rec.flags |= WIFI_CLI_FLAG_ENCRYPTED;
     if (isQos)       rec.flags |= WIFI_CLI_FLAG_QOS;
     rec.flags |= extraFlags;
+    rec.eapolMask |= eapolBit;
 
     if (observedStd > rec.wifiStd) {
         rec.wifiStd = observedStd;
@@ -295,6 +370,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                 if (isValidUnicastMac(clientMac) && isValidUnicastMac(apMac)) {
                     uint8_t cliStd = 0;
                     uint8_t extraFlags = 0;
+                    char assocSsid[33] = {0};
 
                     if (subtype == 0 || subtype == 2) {
                         // Assoc Req IEs start at 28 (24B hdr + 2B cap + 2B listen);
@@ -305,7 +381,9 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             uint8_t elen = payload[pos + 1];
                             if (pos + 2 + elen > len) break;
 
-                            if (id == 45 && elen >= 2) { // HT Capabilities -> Wi-Fi 4
+                            if (id == 0 && elen > 0 && assocSsid[0] == '\0') { // Hidden SSID uncloaking
+                                parseSsidIe(&payload[pos + 2], elen, assocSsid);
+                            } else if (id == 45 && elen >= 2) { // HT Capabilities -> Wi-Fi 4
                                 if (cliStd < 4) cliStd = 4;
                                 uint16_t htCap = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
                                 if (htCap & 0x0002) extraFlags |= WIFI_CLI_FLAG_40MHZ;
@@ -327,10 +405,66 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                     bool isRetry = ((hdr->frame_ctrl >> 11) & 0x01) != 0;
                     bool pwrSave = ((hdr->frame_ctrl >> 12) & 0x01) != 0;
                     portENTER_CRITICAL(&s_wifi_mux);
+                    if (assocSsid[0] != '\0') {
+                        int8_t apIdx = findApIndexByBssid(apMac);
+                        if (apIdx >= 0 && s_ap_records[apIdx].record.ssid[0] == '\0') {
+                            strncpy(s_ap_records[apIdx].record.ssid, assocSsid, sizeof(s_ap_records[apIdx].record.ssid) - 1);
+                            s_ap_records[apIdx].record.ssid[sizeof(s_ap_records[apIdx].record.ssid) - 1] = '\0';
+                        }
+                    }
                     upsertAssociatedClient(
                         clientMac, apMac, ch, rssi,
                         isClientTx, pkt->rx_ctrl, len, isRetry,
-                        isClientTx, pwrSave, false, false, cliStd, extraFlags, nowMs);
+                        isClientTx, pwrSave, false, false, cliStd, extraFlags, 0, nowMs);
+                    portEXIT_CRITICAL(&s_wifi_mux);
+                }
+            }
+            // 1b-2. Directed Probe Requests (Subtype 4) -> separate table, never mixed with clients
+            else if (subtype == 4 && isValidUnicastMac(hdr->addr2)) {
+                char probeSsid[33] = {0};
+                uint16_t pos = 24;
+                while (pos + 1 < len) {
+                    uint8_t id = payload[pos];
+                    uint8_t elen = payload[pos + 1];
+                    if (pos + 2 + elen > len) break;
+                    if (id == 0 && elen > 0) {
+                        parseSsidIe(&payload[pos + 2], elen, probeSsid);
+                        break;
+                    }
+                    pos += 2 + elen;
+                }
+                if (probeSsid[0] != '\0') {
+                    portENTER_CRITICAL(&s_wifi_mux);
+                    if (!isKnownAp(hdr->addr2)) {
+                        uint8_t idx = MAX_DISCOVERED_PROBES;
+                        for (uint8_t i = 0; i < s_probe_count; i++) {
+                            if (memcmp(s_probe_records[i].record.mac, hdr->addr2, 6) == 0 &&
+                                strcmp(s_probe_records[i].record.ssid, probeSsid) == 0) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        if (idx == MAX_DISCOVERED_PROBES) {
+                            if (s_probe_count < MAX_DISCOVERED_PROBES) {
+                                idx = s_probe_count++;
+                            } else {
+                                idx = 0;
+                                uint32_t oldest = s_probe_records[0].lastSeenMs;
+                                for (uint8_t i = 1; i < MAX_DISCOVERED_PROBES; i++) {
+                                    if (s_probe_records[i].lastSeenMs < oldest) {
+                                        oldest = s_probe_records[i].lastSeenMs;
+                                        idx = i;
+                                    }
+                                }
+                            }
+                            memcpy(s_probe_records[idx].record.mac, hdr->addr2, 6);
+                            strncpy(s_probe_records[idx].record.ssid, probeSsid, sizeof(s_probe_records[idx].record.ssid) - 1);
+                            s_probe_records[idx].record.ssid[sizeof(s_probe_records[idx].record.ssid) - 1] = '\0';
+                        }
+                        s_probe_records[idx].record.rssi = rssi;
+                        s_probe_records[idx].record.channel = ch;
+                        s_probe_records[idx].lastSeenMs = nowMs;
+                    }
                     portEXIT_CRITICAL(&s_wifi_mux);
                 }
             }
@@ -345,6 +479,11 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                     uint16_t pos = 36;
                     uint8_t realCh = ch;
                     uint16_t staCount = 0;
+                    uint8_t channelUtil = 0xFF;
+                    uint8_t caps = 0;
+                    char country[3] = {0};
+                    int8_t maxTxPower = 0;
+                    char wpsModel[24] = {0};
                     bool hasBssLoad = false;
                     bool isHt = false;
                     bool isVht = false;
@@ -373,9 +512,33 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
 
                         if (id == 0 && elen > 0 && ssidBuf[0] == '\0') { // SSID
                             parseSsidIe(&payload[pos + 2], elen, ssidBuf);
-                        } else if (id == 11 && elen >= 2) { // BSS Load Element: Station Count
+                        } else if (id == 7 && elen >= 6) { // Country IE (ISO code + max TX power)
+                            char c0 = static_cast<char>(payload[pos + 2]);
+                            char c1 = static_cast<char>(payload[pos + 3]);
+                            if (c0 >= 'A' && c0 <= 'Z' && c1 >= 'A' && c1 <= 'Z') {
+                                country[0] = c0;
+                                country[1] = c1;
+                                country[2] = '\0';
+                            }
+                            uint16_t tPos = pos + 5;
+                            uint16_t tEnd = pos + 2 + elen;
+                            while (tPos + 3 <= tEnd) {
+                                uint8_t firstCh = payload[tPos];
+                                uint8_t numCh = payload[tPos + 1];
+                                int8_t txp = static_cast<int8_t>(payload[tPos + 2]);
+                                if (firstCh >= 1 && firstCh <= 14 && numCh >= 1 && txp > 0 && txp <= 40) {
+                                    if (maxTxPower == 0 || (realCh >= firstCh && realCh < firstCh + numCh)) {
+                                        maxTxPower = txp;
+                                    }
+                                }
+                                tPos += 3;
+                            }
+                        } else if (id == 11 && elen >= 2) { // QBSS Load: Station Count + Channel Utilization
                             staCount = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
                             hasBssLoad = true;
+                            if (elen >= 3) {
+                                channelUtil = static_cast<uint8_t>((static_cast<uint16_t>(payload[pos + 4]) * 100U + 127U) / 255U);
+                            }
                         } else if (id == 3 && elen >= 1) { // DS Parameter Set: primary channel (1..14)
                             uint8_t c = payload[pos + 2];
                             if (c >= 1 && c <= 14) {
@@ -383,11 +546,28 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             }
                         } else if (id == 45 || id == 61) { // HT Capabilities (45) / HT Operation (61) -> Wi-Fi 4
                             isHt = true;
-                            if (id == 61 && elen >= 1 && realCh == ch) {
-                                uint8_t c = payload[pos + 2];
-                                if (c >= 1 && c <= 14) {
-                                    realCh = c;
+                            if (id == 61 && elen >= 1) {
+                                if (realCh == ch) {
+                                    uint8_t c = payload[pos + 2];
+                                    if (c >= 1 && c <= 14) {
+                                        realCh = c;
+                                    }
                                 }
+                                if (elen >= 2) {
+                                    uint8_t htInfo1 = payload[pos + 3];
+                                    uint8_t secOff = htInfo1 & 0x03;
+                                    if (((htInfo1 & 0x04) != 0) && (secOff == 1 || secOff == 3)) {
+                                        caps |= WIFI_AP_CAP_40MHZ;
+                                    }
+                                }
+                            }
+                        } else if (id == 54 && elen >= 3) { // Mobility Domain -> 802.11r
+                            caps |= WIFI_AP_CAP_11R;
+                        } else if (id == 70 && elen >= 5) { // RRM Enabled Capabilities -> 802.11k
+                            caps |= WIFI_AP_CAP_11K;
+                        } else if (id == 127 && elen >= 3) { // Extended Capabilities -> 802.11v (bit 19)
+                            if ((payload[pos + 4] & 0x08) != 0) {
+                                caps |= WIFI_AP_CAP_11V;
                             }
                         } else if (id == 191 || id == 192) { // VHT Capabilities (191) / VHT Operation (192) -> Wi-Fi 5
                             isVht = true;
@@ -471,7 +651,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                 }
                                 rnrPos += infoLen;
                             }
-                        } else if (id == 48 && elen >= 8) { // RSN IE (WPA2 / WPA3)
+                        } else if (id == 48 && elen >= 8) { // RSN IE (WPA2 / WPA3 / PMF / 11r)
                             auth = AUTH_WPA2;
                             uint32_t elemEnd = static_cast<uint32_t>(pos) + 2U + elen;
                             uint16_t pairwiseCount = payload[pos + 8] | (static_cast<uint16_t>(payload[pos + 9]) << 8);
@@ -488,17 +668,33 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                         // 8=SAE, 9=FT-SAE, 12=Suite-B-192, 24=SAE-EXT-KEY
                                         if (suiteType == 8 || suiteType == 9 || suiteType == 12 || suiteType == 24) {
                                             auth = AUTH_WPA3;
-                                            break;
+                                        }
+                                        // 3=FT-802.1X, 4=FT-PSK, 9=FT-SAE
+                                        if (suiteType == 3 || suiteType == 4 || suiteType == 9) {
+                                            caps |= WIFI_AP_CAP_11R;
                                         }
                                     }
                                 }
+                                uint32_t rsnCapOff = suitesStart + (static_cast<uint32_t>(akmCount) * 4U);
+                                if (rsnCapOff + 2U <= elemEnd) {
+                                    uint16_t rsnCap = payload[rsnCapOff] | (static_cast<uint16_t>(payload[rsnCapOff + 1]) << 8);
+                                    if (rsnCap & 0x0080) caps |= WIFI_AP_CAP_PMF_CAP; // MFPC (bit 7)
+                                    if (rsnCap & 0x0040) caps |= WIFI_AP_CAP_PMF_REQ; // MFPR (bit 6)
+                                }
                             }
-                        } else if (id == 221 && elen >= 4 && auth < AUTH_WPA2) { // Vendor Specific (WPA1)
+                        } else if (id == 221 && elen >= 4) { // Vendor Specific (WPA1 & WPS)
                             if (payload[pos + 2] == 0x00 &&
                                 payload[pos + 3] == 0x50 &&
-                                payload[pos + 4] == 0xF2 &&
-                                payload[pos + 5] == 0x01) {
-                                auth = AUTH_WPA;
+                                payload[pos + 4] == 0xF2) {
+                                uint8_t vType = payload[pos + 5];
+                                if (vType == 0x01 && auth < AUTH_WPA2) {
+                                    auth = AUTH_WPA;
+                                } else if (vType == 0x04) {
+                                    caps |= WIFI_AP_CAP_WPS;
+                                    if (elen > 4) {
+                                        parseWpsIe(&payload[pos + 6], static_cast<uint16_t>(elen - 4), caps, wpsModel, sizeof(wpsModel));
+                                    }
+                                }
                             }
                         }
                         pos += 2 + elen;
@@ -545,6 +741,20 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                 entry.record.authMode = auth;
                             }
                             if (hasBssLoad) entry.record.staCount = staCount;
+                            if (channelUtil != 0xFF) entry.record.channelUtil = channelUtil;
+                            entry.record.caps = (subtype == 8)
+                                ? static_cast<uint8_t>(caps | (entry.record.caps & (WIFI_AP_CAP_WPS | WIFI_AP_CAP_WPS_LOCK)))
+                                : static_cast<uint8_t>(entry.record.caps | caps);
+                            if (country[0] != '\0') {
+                                entry.record.country[0] = country[0];
+                                entry.record.country[1] = country[1];
+                                entry.record.country[2] = '\0';
+                            }
+                            if (maxTxPower > 0) entry.record.maxTxPower = maxTxPower;
+                            if (wpsModel[0] != '\0') {
+                                strncpy(entry.record.wpsModel, wpsModel, sizeof(entry.record.wpsModel) - 1);
+                                entry.record.wpsModel[sizeof(entry.record.wpsModel) - 1] = '\0';
+                            }
                             if (wifiStd > entry.record.wifiStd) {
                                 entry.record.wifiStd = wifiStd;
                             }
@@ -569,6 +779,7 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                                     }
                                 }
                             }
+                            memset(&s_ap_records[idx].record, 0, sizeof(WifiApRecord));
                             strncpy(s_ap_records[idx].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
                             s_ap_records[idx].record.ssid[sizeof(s_ap_records[0].record.ssid) - 1] = '\0';
                             memcpy(s_ap_records[idx].record.bssid, hdr->addr3, 6);
@@ -578,6 +789,18 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                             s_ap_records[idx].record.staCount = staCount;
                             s_ap_records[idx].record.wifiStd = wifiStd;
                             s_ap_records[idx].record.mlo = isMlo;
+                            s_ap_records[idx].record.channelUtil = channelUtil;
+                            s_ap_records[idx].record.caps = caps;
+                            if (country[0] != '\0') {
+                                s_ap_records[idx].record.country[0] = country[0];
+                                s_ap_records[idx].record.country[1] = country[1];
+                                s_ap_records[idx].record.country[2] = '\0';
+                            }
+                            s_ap_records[idx].record.maxTxPower = maxTxPower;
+                            if (wpsModel[0] != '\0') {
+                                strncpy(s_ap_records[idx].record.wpsModel, wpsModel, sizeof(s_ap_records[0].record.wpsModel) - 1);
+                                s_ap_records[idx].record.wpsModel[sizeof(s_ap_records[0].record.wpsModel) - 1] = '\0';
+                            }
                             s_ap_records[idx].lastSeenMs = nowMs;
                         }
                         portEXIT_CRITICAL(&s_wifi_mux);
@@ -620,12 +843,13 @@ void WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t typ
                 bool isNullData = (subtype & 0x04) != 0; // Subtype 4 (Null) or 12 (QoS Null)
                 bool isEncrypted = (!isNullData) && (((fc >> 14) & 0x01) != 0);
                 bool isQos = (subtype & 0x08) != 0;      // Subtype 8 (QoS Data) or 12 (QoS Null)
+                uint8_t eapolBit = (!isNullData && !isEncrypted) ? parseEapolKeyMsg(payload, l2Bytes, fc, isQos) : 0;
 
                 portENTER_CRITICAL(&s_wifi_mux);
                 upsertAssociatedClient(
                     clientMac, apMac, ch, rssi,
                     isClientTx, pkt->rx_ctrl, l2Bytes, isRetry,
-                    isClientTx, pwrSave, isEncrypted, isQos, 0, 0, nowMs);
+                    isClientTx, pwrSave, isEncrypted, isQos, 0, 0, eapolBit, nowMs);
                 portEXIT_CRITICAL(&s_wifi_mux);
             }
         }
@@ -686,8 +910,9 @@ void WifiSniffer::getChannelStats(uint8_t channel, uint16_t &outPkts, int8_t &ou
 void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *outNoiseFloor,
                                 WifiApRecord *outAps, uint8_t &outApCount,
                                 WifiClientRecord *outClients, uint8_t &outClientCount,
+                                WifiProbeRecord *outProbes, uint8_t &outProbeCount,
                                 uint16_t &outDeauthCount, uint8_t &outDeauthChannel,
-                                uint32_t dwellMs) {
+                                uint32_t dwellMs, uint8_t lockChannel) {
     portENTER_CRITICAL(&s_wifi_mux);
     for (uint8_t i = 0; i < GHOSTWAVE_WIFI_CHANNELS; i++) {
         s_wifi_deauth_temp[i] = 0;
@@ -696,16 +921,34 @@ void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *o
 
     start();
 
-    for (uint8_t ch = 1; ch <= GHOSTWAVE_WIFI_CHANNELS; ch++) {
-        setChannel(ch);
-        resetChannelStats(ch);
-
-        vTaskDelay(pdMS_TO_TICKS(dwellMs));
-
+    if (lockChannel >= 1 && lockChannel <= GHOSTWAVE_WIFI_CHANNELS) {
+        if (outPkts != nullptr && outMaxRssi != nullptr) {
+            for (uint8_t i = 0; i < GHOSTWAVE_WIFI_CHANNELS; i++) {
+                outPkts[i] = 0;
+                outMaxRssi[i] = -128;
+                if (outNoiseFloor != nullptr) outNoiseFloor[i] = -95;
+            }
+        }
+        setChannel(lockChannel);
+        resetChannelStats(lockChannel);
+        vTaskDelay(pdMS_TO_TICKS(dwellMs * GHOSTWAVE_WIFI_CHANNELS));
         if (outPkts != nullptr && outMaxRssi != nullptr) {
             int8_t dummyNoise = -95;
-            getChannelStats(ch, outPkts[ch - 1], outMaxRssi[ch - 1],
-                            outNoiseFloor != nullptr ? outNoiseFloor[ch - 1] : dummyNoise);
+            getChannelStats(lockChannel, outPkts[lockChannel - 1], outMaxRssi[lockChannel - 1],
+                            outNoiseFloor != nullptr ? outNoiseFloor[lockChannel - 1] : dummyNoise);
+        }
+    } else {
+        for (uint8_t ch = 1; ch <= GHOSTWAVE_WIFI_CHANNELS; ch++) {
+            setChannel(ch);
+            resetChannelStats(ch);
+
+            vTaskDelay(pdMS_TO_TICKS(dwellMs));
+
+            if (outPkts != nullptr && outMaxRssi != nullptr) {
+                int8_t dummyNoise = -95;
+                getChannelStats(ch, outPkts[ch - 1], outMaxRssi[ch - 1],
+                                outNoiseFloor != nullptr ? outNoiseFloor[ch - 1] : dummyNoise);
+            }
         }
     }
 
@@ -758,6 +1001,25 @@ void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *o
         outClientCount = s_client_count;
         for (uint8_t i = 0; i < s_client_count; i++) {
             outClients[i] = s_client_records[i].record;
+        }
+    }
+
+    // Prune stale Probe Requests (inactive for > 60 seconds)
+    uint8_t probeWriteIdx = 0;
+    for (uint8_t i = 0; i < s_probe_count; i++) {
+        if ((nowMs - s_probe_records[i].lastSeenMs) < 60000 && !isKnownAp(s_probe_records[i].record.mac)) {
+            if (probeWriteIdx != i) {
+                s_probe_records[probeWriteIdx] = s_probe_records[i];
+            }
+            probeWriteIdx++;
+        }
+    }
+    s_probe_count = probeWriteIdx;
+
+    if (outProbes != nullptr) {
+        outProbeCount = s_probe_count;
+        for (uint8_t i = 0; i < s_probe_count; i++) {
+            outProbes[i] = s_probe_records[i].record;
         }
     }
 

@@ -18,8 +18,10 @@ public:
     static void sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *outNoiseFloor,
                               WifiApRecord *outAps, uint8_t &outApCount,
                               WifiClientRecord *outClients, uint8_t &outClientCount,
+                              WifiProbeRecord *outProbes, uint8_t &outProbeCount,
                               uint16_t &outDeauthCount, uint8_t &outDeauthChannel,
-                              uint32_t dwellMs = WIFI_CHANNEL_DWELL_MS);
+                              uint32_t dwellMs = WIFI_CHANNEL_DWELL_MS,
+                              uint8_t lockChannel = 0);
 
 private:
     static void promiscuousCallback(void *buf, wifi_promiscuous_pkt_type_t type);

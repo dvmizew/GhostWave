@@ -51,9 +51,14 @@ void rf_scanner_seek(bool seekUp) {
 }
 
 static volatile uint8_t s_bug_sensitivity = 7;
+static volatile uint8_t s_wifi_lock_channel = 0;
 
 void rf_scanner_set_bug_sensitivity(uint8_t minLevel) {
     s_bug_sensitivity = minLevel;
+}
+
+void rf_scanner_set_wifi_lock(uint8_t channel) {
+    s_wifi_lock_channel = (channel <= GHOSTWAVE_WIFI_CHANNELS) ? channel : 0;
 }
 
 SystemOpMode rf_scanner_get_mode() {
@@ -217,13 +222,16 @@ void Task_RF_Scanner(void *param) {
                         &localSnapshot.stationCount, MAX_DISCOVERED_STATIONS);
         localSnapshot.teaError = s_tea5767.getLastError();
 
-        // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13)
+        // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13, or locked single channel)
+        uint8_t lockCh = s_wifi_lock_channel;
+        localSnapshot.wifiLockChannel = lockCh;
         WifiSniffer::sweepChannels(localSnapshot.wifiPkts, localSnapshot.wifiMaxRssi,
                                    localSnapshot.wifiNoiseFloor,
                                    localSnapshot.apList, localSnapshot.apCount,
                                    localSnapshot.clientList, localSnapshot.clientCount,
+                                   localSnapshot.probeList, localSnapshot.probeCount,
                                    localSnapshot.wifiDeauthPkts, localSnapshot.wifiDeauthChannel,
-                                   WIFI_CHANNEL_DWELL_MS);
+                                   WIFI_CHANNEL_DWELL_MS, lockCh);
 
         // Brief delay between Wi-Fi and BLE on the shared 2.4 GHz RF transceiver
         vTaskDelay(pdMS_TO_TICKS(5));
