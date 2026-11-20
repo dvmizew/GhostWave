@@ -1615,11 +1615,39 @@
     let activeInspectedBleAddr = null;
     let lastWifiNoise = new Array(13).fill(-95);
 
+    // Cached dictionary loader (localStorage offline fallback + 7-day refresh)
+    const DICT_CACHE_TTL_MS = 7 * 86400 * 1000;
+    function loadCachedDict(cacheKey, url, applyFn) {
+      let cached = null;
+      let isFresh = false;
+      try {
+        cached = localStorage.getItem(cacheKey);
+        const ts = Number(localStorage.getItem(`${cacheKey}_ts`) || 0);
+        isFresh = !!cached && (Date.now() - ts) < DICT_CACHE_TTL_MS;
+      } catch (_) {}
+      if (cached) {
+        try { applyFn(cached); } catch (_) {}
+      }
+      if (isFresh) return;
+      fetch(url)
+        .then(r => r.ok ? r.text() : "")
+        .then(txt => {
+          if (!txt) return;
+          try { applyFn(txt); } catch (_) { return; }
+          try {
+            localStorage.setItem(cacheKey, txt);
+            localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
+          } catch (_) {}
+        })
+        .catch(() => {});
+    }
+
     // Dynamic IEEE OUI database for MAC vendor lookup
     const ouiMap = new Map();
-    fetch("https://raw.githubusercontent.com/nmap/nmap/master/nmap-mac-prefixes")
-      .then(r => r.ok ? r.text() : "")
-      .then(txt => {
+    loadCachedDict(
+      "gw_dict_oui_v1",
+      "https://raw.githubusercontent.com/nmap/nmap/master/nmap-mac-prefixes",
+      txt => {
         for (const line of txt.split("\n")) {
           if (!line || line[0] === "#") continue;
           const sp = line.indexOf(" ");
@@ -1627,39 +1655,43 @@
         }
         if (activeInspectedBssid) openApModal(activeInspectedBssid, false);
         if (discoveredBles.size > 0) renderBleTable();
-      })
-      .catch(() => {}); // Offline fallback: shows OUI hex prefix
+      }
+    );
 
     // Dynamic Bluetooth SIG Company IDs, 16-bit Service UUIDs & 16-bit Member UUIDs
     const bleCompanyMap = new Map();
     const bleServiceMap = new Map();
     const bleMemberMap = new Map();
-    fetch("https://raw.githubusercontent.com/NordicSemiconductor/bluetooth-numbers-database/master/v1/company_ids.json")
-      .then(r => r.ok ? r.json() : [])
-      .then(list => {
-        for (const item of list) {
+    const BLE_PRIORITY_SERVICES = new Set([0xFD5A, 0xFEED, 0xFCB2, 0xFD44, 0xFE2C, 0xFEAA, 0xFE95, 0xFCD2]);
+
+    loadCachedDict(
+      "gw_dict_ble_cid_v1",
+      "https://raw.githubusercontent.com/NordicSemiconductor/bluetooth-numbers-database/master/v1/company_ids.json",
+      txt => {
+        for (const item of JSON.parse(txt)) {
           if (item && typeof item.code === "number" && item.name) bleCompanyMap.set(item.code, item.name);
         }
         if (discoveredBles.size > 0) renderBleTable();
-      })
-      .catch(() => {});
-    const BLE_PRIORITY_SERVICES = new Set([0xFD5A, 0xFEED, 0xFCB2, 0xFD44, 0xFE2C, 0xFEAA, 0xFE95, 0xFCD2]);
+      }
+    );
 
-    fetch("https://raw.githubusercontent.com/NordicSemiconductor/bluetooth-numbers-database/master/v1/service_uuids.json")
-      .then(r => r.ok ? r.json() : [])
-      .then(list => {
-        for (const item of list) {
+    loadCachedDict(
+      "gw_dict_ble_svc_v1",
+      "https://raw.githubusercontent.com/NordicSemiconductor/bluetooth-numbers-database/master/v1/service_uuids.json",
+      txt => {
+        for (const item of JSON.parse(txt)) {
           if (item && typeof item.uuid === "string" && /^[0-9a-fA-F]{4}$/.test(item.uuid) && item.name) {
             bleServiceMap.set(parseInt(item.uuid, 16), item.name);
           }
         }
         if (discoveredBles.size > 0) renderBleTable();
-      })
-      .catch(() => {});
+      }
+    );
 
-    fetch("https://raw.githubusercontent.com/reelyactive/bluetooth-assigned-numbers/master/src/member_uuids.yaml")
-      .then(r => r.ok ? r.text() : "")
-      .then(txt => {
+    loadCachedDict(
+      "gw_dict_ble_mem_v1",
+      "https://raw.githubusercontent.com/reelyactive/bluetooth-assigned-numbers/master/src/member_uuids.yaml",
+      txt => {
         let curUuid = null;
         for (const line of txt.split("\n")) {
           const mU = line.match(/uuid:\s*(?:0x)?([0-9a-fA-F]{4})\b/i);
@@ -1672,8 +1704,8 @@
           }
         }
         if (discoveredBles.size > 0) renderBleTable();
-      })
-      .catch(() => {});
+      }
+    );
 
     const APPLE_CONTINUITY_TYPES = {
       0x02: "iBeacon",
