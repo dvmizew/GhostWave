@@ -5,7 +5,7 @@
 #include "config.h"
 
 #define MAX_DISCOVERED_APS      16
-#define MAX_DISCOVERED_BLE      8
+#define MAX_DISCOVERED_BLE      12
 #define MAX_DISCOVERED_STATIONS 8
 
 enum WifiAuthMode : uint8_t {
@@ -109,10 +109,23 @@ struct WifiProbeRecord {
     uint8_t  channel;
 };
 
+// Bitmask flags for BleDeviceRecord::flags
+#define BLE_FLAG_CONNECTABLE    0x01  // Connectable advertising PDU (ADV_IND / ADV_DIRECT_IND)
+#define BLE_FLAG_HAS_TXPOWER    0x02  // AD 0x0A TX Power Level advertised
+#define BLE_FLAG_HAS_MFG        0x04  // AD 0xFF Manufacturer Specific Data present
+#define BLE_FLAG_DUAL_MODE      0x08  // AD 0x01 Flags indicates BR/EDR + BLE dual-mode
+
 struct BleDeviceRecord {
-    char   name[20];
-    char   addr[18];
-    int8_t rssi;
+    uint8_t  addr[6];           // MSB-first display order (addr[0]:...:addr[5])
+    char     name[24];          // AD 0x08/0x09 Local Name (empty if not advertised)
+    int8_t   rssi;
+    int8_t   txPower;           // AD 0x0A TX Power in dBm (valid when BLE_FLAG_HAS_TXPOWER)
+    uint8_t  addrType;          // 0=Public, 1=Random Static, 2=RPA, 3=NRPA
+    uint8_t  flags;             // Bitmask of BLE_FLAG_*
+    uint16_t companyId;         // AD 0xFF Bluetooth SIG Company ID (LE16)
+    uint8_t  mfgSubtype;        // First payload byte after Company ID (e.g. Apple Continuity type)
+    uint16_t serviceUuid;       // Primary 16-bit Service UUID (AD 0x02/0x03/0x16), 0 if none
+    uint16_t appearance;        // AD 0x19 GAP Appearance (0 if none)
 };
 
 struct SpectrumSnapshot {

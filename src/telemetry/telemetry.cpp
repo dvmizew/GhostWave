@@ -248,16 +248,23 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
         }
     }
 
-    for (uint8_t i = 0; i < snapshot.bleCount && i < MAX_DISCOVERED_BLE && static_cast<size_t>(offset) + 80 < maxLen; i++) {
+    for (uint8_t i = 0; i < snapshot.bleCount && i < MAX_DISCOVERED_BLE && static_cast<size_t>(offset) + 170 < maxLen; i++) {
         const BleDeviceRecord &ble = snapshot.bleList[i];
-        char cleanName[20];
+        char cleanName[24];
         sanitizeJsonStr(ble.name, cleanName, sizeof(cleanName));
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"name\":\"%s\",\"addr\":\"%s\",\"rssi\":%d}",
+            "%s{\"name\":\"%s\",\"addr\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"at\":%u,\"rssi\":%d,\"txp\":%d,\"flg\":%u,\"cid\":%u,\"sub\":%u,\"svc\":%u,\"app\":%u}",
             (i == 0) ? "" : ",",
             cleanName,
-            ble.addr,
-            ble.rssi);
+            ble.addr[0], ble.addr[1], ble.addr[2], ble.addr[3], ble.addr[4], ble.addr[5],
+            ble.addrType,
+            ble.rssi,
+            (ble.flags & BLE_FLAG_HAS_TXPOWER) ? static_cast<int>(ble.txPower) : 127,
+            ble.flags,
+            (ble.flags & BLE_FLAG_HAS_MFG) ? static_cast<unsigned>(ble.companyId) : 0U,
+            (ble.flags & BLE_FLAG_HAS_MFG) ? static_cast<unsigned>(ble.mfgSubtype) : 0U,
+            ble.serviceUuid,
+            ble.appearance);
         if (written < 0 || static_cast<size_t>(offset + written) + 4 >= maxLen) {
             break;
         }

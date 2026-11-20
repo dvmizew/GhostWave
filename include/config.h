@@ -16,7 +16,7 @@
 #define I2C_STANDARD_CLOCK      100000   // 100 kHz Standard-Mode
 
 // Static buffer size for telemetry JSON framing
-#define TELEMETRY_BUFFER_SIZE   10240
+#define TELEMETRY_BUFFER_SIZE   12288
 
 #define MAX_DISCOVERED_CLIENTS  12
 #define MAX_DISCOVERED_PROBES   8
@@ -31,7 +31,7 @@
 
 #define GHOSTWAVE_WIFI_CHANNELS 13       // 2.4 GHz 802.11 b/g/n channels 1 to 13
 #define WIFI_CHANNEL_DWELL_MS   25       // Sniffer dwell per channel (13 * 25ms = 325ms)
-#define BLE_SCAN_WINDOW_MS      80       // Passive BLE scan window per cycle
+#define BLE_SCAN_WINDOW_MS      120      // Active BLE scan window per cycle (3 x 40ms channels 37/38/39)
 
 // FREERTOS TASK ALLOCATION
 #define RF_TASK_STACK_SIZE      8192     // Core 1: Wi-Fi sniffer + NimBLE stack
