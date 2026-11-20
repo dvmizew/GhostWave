@@ -187,6 +187,26 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                     char ssidBuf[33] = {0};
                     uint16_t pos = 36;
                     uint8_t realCh = ch;
+                    uint16_t staCount = 0;
+                    bool isHt = false;
+                    bool isVht = false;
+                    bool isHe = false;
+                    bool isEht = false;
+                    bool isMlo = false;
+
+                    struct RnrMldEntry {
+                        uint8_t mldId;
+                        uint8_t linkId;
+                        bool    disabled;
+                    };
+                    RnrMldEntry rnrMldEntries[8];
+                    uint8_t rnrMldCount = 0;
+
+                    bool hasBasicMle = false;
+                    uint8_t ownLinkId = 0xFF;
+                    uint8_t ownApMldId = 0;
+                    uint8_t maxSimulLinks = 0;
+                    bool hasPartnerProfile = false;
 
                     while (pos + 1 < len) {
                         uint8_t id = payload[pos];
@@ -201,15 +221,102 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                                 ssidBuf[i] = (c >= 32 && c <= 126) ? c : '?';
                             }
                             ssidBuf[copyLen] = '\0';
+                        } else if (id == 11 && elen >= 2) { // BSS Load Element: Station Count
+                            staCount = payload[pos + 2] | (static_cast<uint16_t>(payload[pos + 3]) << 8);
                         } else if (id == 3 && elen >= 1) { // DS Parameter Set: primary channel (1..14)
                             uint8_t c = payload[pos + 2];
                             if (c >= 1 && c <= 14) {
                                 realCh = c;
                             }
-                        } else if (id == 61 && elen >= 1 && realCh == ch) { // HT Operation: primary channel
-                            uint8_t c = payload[pos + 2];
-                            if (c >= 1 && c <= 14) {
-                                realCh = c;
+                        } else if (id == 45 || id == 61) { // HT Capabilities (45) / HT Operation (61) -> Wi-Fi 4
+                            isHt = true;
+                            if (id == 61 && elen >= 1 && realCh == ch) {
+                                uint8_t c = payload[pos + 2];
+                                if (c >= 1 && c <= 14) {
+                                    realCh = c;
+                                }
+                            }
+                        } else if (id == 191 || id == 192) { // VHT Capabilities (191) / VHT Operation (192) -> Wi-Fi 5
+                            isVht = true;
+                        } else if (id == 255 && elen >= 1) { // Extension Element
+                            uint8_t extId = payload[pos + 2];
+                            if (extId == 35 || extId == 36) { // HE Capabilities (35) / HE Operation (36) -> Wi-Fi 6
+                                isHe = true;
+                            } else if (extId == 108 || extId == 106) { // EHT Capabilities (108) / EHT Operation (106) -> Wi-Fi 7
+                                isEht = true;
+                            } else if (extId == 107 && elen >= 4) { // Multi-Link Element (107) -> IEEE 802.11be §9.4.2.322
+                                isEht = true;
+                                uint16_t elemEnd = pos + 2 + elen;
+                                uint16_t mlControl = payload[pos + 3] | (static_cast<uint16_t>(payload[pos + 4]) << 8);
+                                uint8_t mlType = mlControl & 0x07;
+                                if (mlType == 0) { // Basic Multi-Link element
+                                    uint16_t ciStart = pos + 5;
+                                    uint8_t commonInfoLen = payload[ciStart];
+                                    // Common Info len includes itself (1B) + MLD MAC (6B) => minimum 7 bytes
+                                    if (commonInfoLen >= 7 && (ciStart + commonInfoLen) <= elemEnd) {
+                                        hasBasicMle = true;
+                                        uint8_t ciOff = 7; // past len (1) + mld_addr (6)
+
+                                        if ((mlControl & 0x0010) != 0 && ciOff + 1 <= commonInfoLen) { // Link ID Info Present
+                                            ownLinkId = payload[ciStart + ciOff] & 0x0F;
+                                            ciOff += 1;
+                                        }
+                                        if ((mlControl & 0x0020) != 0 && ciOff + 1 <= commonInfoLen) { // BSS Param Change Count
+                                            ciOff += 1;
+                                        }
+                                        if ((mlControl & 0x0040) != 0 && ciOff + 2 <= commonInfoLen) { // Medium Sync Delay Info
+                                            ciOff += 2;
+                                        }
+                                        if ((mlControl & 0x0080) != 0 && ciOff + 2 <= commonInfoLen) { // EML Capabilities
+                                            ciOff += 2;
+                                        }
+                                        if ((mlControl & 0x0100) != 0 && ciOff + 2 <= commonInfoLen) { // MLD Capabilities & Operations
+                                            uint16_t mldCap = payload[ciStart + ciOff] | (static_cast<uint16_t>(payload[ciStart + ciOff + 1]) << 8);
+                                            maxSimulLinks = mldCap & 0x000F; // value + 1 = max simultaneous links (0 = single-link)
+                                            ciOff += 2;
+                                        }
+                                        if ((mlControl & 0x0200) != 0 && ciOff + 1 <= commonInfoLen) { // AP MLD ID
+                                            ownApMldId = payload[ciStart + ciOff];
+                                        }
+
+                                        // Check Link Info field for Per-STA Profile subelements (subId == 0)
+                                        uint16_t subPos = ciStart + commonInfoLen;
+                                        while (subPos + 2 <= elemEnd) {
+                                            uint8_t subId = payload[subPos];
+                                            uint8_t subLen = payload[subPos + 1];
+                                            if (subPos + 2 + subLen > elemEnd) break;
+                                            if (subId == 0) {
+                                                hasPartnerProfile = true;
+                                                break;
+                                            }
+                                            subPos += 2 + subLen;
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (id == 201 && elen >= 4) { // Reduced Neighbor Report (RNR) -> IEEE 802.11be
+                            uint16_t rnrPos = pos + 2;
+                            uint16_t rnrEnd = pos + 2 + elen;
+                            while (rnrPos + 4 <= rnrEnd) {
+                                uint8_t tbttHdr = payload[rnrPos];
+                                uint8_t tbttLen = payload[rnrPos + 1];
+                                uint8_t tbttType = tbttHdr & 0x03;
+                                uint8_t count = ((tbttHdr & 0xF0) >> 4) + 1;
+                                uint16_t infoLen = 4 + (static_cast<uint16_t>(count) * tbttLen);
+                                if (rnrPos + infoLen > rnrEnd) break;
+                                // MLD Parameters (3 bytes) are appended at offset 13 when tbttType == 0 && tbttLen >= 16
+                                if (tbttType == 0 && tbttLen >= 16) {
+                                    uint16_t entryPos = rnrPos + 4;
+                                    for (uint8_t k = 0; k < count && rnrMldCount < 8; k++) {
+                                        const uint8_t *mldParams = &payload[entryPos + 13];
+                                        rnrMldEntries[rnrMldCount].mldId = mldParams[0];
+                                        rnrMldEntries[rnrMldCount].linkId = mldParams[1] & 0x0F;
+                                        rnrMldEntries[rnrMldCount].disabled = (mldParams[2] & 0x20) != 0;
+                                        rnrMldCount++;
+                                        entryPos += tbttLen;
+                                    }
+                                }
+                                rnrPos += infoLen;
                             }
                         } else if (id == 48 && elen >= 8) { // RSN IE (WPA2 / WPA3)
                             auth = AUTH_WPA2;
@@ -241,6 +348,33 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                         pos += 2 + elen;
                     }
 
+                    bool hasRnrPartnerLink = false;
+                    if (hasBasicMle && ownLinkId < 15) {
+                        for (uint8_t r = 0; r < rnrMldCount; r++) {
+                            if (!rnrMldEntries[r].disabled &&
+                                rnrMldEntries[r].mldId == ownApMldId &&
+                                rnrMldEntries[r].linkId != ownLinkId) {
+                                hasRnrPartnerLink = true;
+                                break;
+                            }
+                        }
+                    }
+                    isMlo = hasBasicMle && (ownLinkId < 15) &&
+                            (maxSimulLinks >= 1 || hasPartnerProfile || hasRnrPartnerLink);
+
+                    uint8_t wifiStd = 0;
+                    if (isEht || isMlo) {
+                        wifiStd = 7;
+                    } else if (isHe) {
+                        wifiStd = 6;
+                    } else if (isVht) {
+                        wifiStd = 5;
+                    } else if (isHt) {
+                        wifiStd = 4;
+                    } else {
+                        wifiStd = 1;
+                    }
+
                     if (ssidBuf[0] != '\0' || subtype == 8) {
                         portENTER_CRITICAL_ISR(&s_wifi_mux);
                         bool found = false;
@@ -250,6 +384,13 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                                 s_ap_records[i].record.rssi = rssi;
                                 s_ap_records[i].record.channel = realCh;
                                 s_ap_records[i].record.authMode = auth;
+                                if (staCount > 0) s_ap_records[i].record.staCount = staCount;
+                                if (wifiStd > s_ap_records[i].record.wifiStd) {
+                                    s_ap_records[i].record.wifiStd = wifiStd;
+                                }
+                                if (subtype == 8 || isMlo) {
+                                    s_ap_records[i].record.mlo = isMlo;
+                                }
                                 s_ap_records[i].lastSeenMs = nowMs;
                                 if (s_ap_records[i].record.ssid[0] == '\0' && ssidBuf[0] != '\0') {
                                     strncpy(s_ap_records[i].record.ssid, ssidBuf, sizeof(s_ap_records[0].record.ssid) - 1);
@@ -265,6 +406,9 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                             s_ap_records[s_ap_count].record.channel = realCh;
                             s_ap_records[s_ap_count].record.rssi = rssi;
                             s_ap_records[s_ap_count].record.authMode = auth;
+                            s_ap_records[s_ap_count].record.staCount = staCount;
+                            s_ap_records[s_ap_count].record.wifiStd = wifiStd;
+                            s_ap_records[s_ap_count].record.mlo = isMlo;
                             s_ap_records[s_ap_count].lastSeenMs = nowMs;
                             s_ap_count++;
                         } else if (!found && s_ap_count >= MAX_DISCOVERED_APS) {
@@ -282,6 +426,9 @@ void IRAM_ATTR WifiSniffer::promiscuousCallback(void *buf, wifi_promiscuous_pkt_
                             s_ap_records[oldestIdx].record.channel = realCh;
                             s_ap_records[oldestIdx].record.rssi = rssi;
                             s_ap_records[oldestIdx].record.authMode = auth;
+                            s_ap_records[oldestIdx].record.staCount = staCount;
+                            s_ap_records[oldestIdx].record.wifiStd = wifiStd;
+                            s_ap_records[oldestIdx].record.mlo = isMlo;
                             s_ap_records[oldestIdx].lastSeenMs = nowMs;
                         }
                         portEXIT_CRITICAL_ISR(&s_wifi_mux);
@@ -522,21 +669,30 @@ void WifiSniffer::sweepChannels(uint16_t *outPkts, int8_t *outMaxRssi, int8_t *o
         const uint8_t *b = s_client_records[i].record.bssid;
         bool hasBssid = (b[0] | b[1] | b[2] | b[3] | b[4] | b[5]) != 0;
         if (hasBssid) {
+            int8_t bestApIdx = -1;
+            // 1. Exact 6-byte BSSID match takes top priority
             for (uint8_t a = 0; a < s_ap_count; a++) {
-                // Exact 6-byte BSSID match OR 5-byte MLO affiliated-link match
-                bool match = (memcmp(s_ap_records[a].record.bssid, b, 6) == 0);
-                if (!match && memcmp(s_ap_records[a].record.bssid + 1, b + 1, 5) == 0) {
-                    match = true;
-                }
-                if (match) {
-                    if (s_client_records[i].record.probedSsid[0] == '\0' && s_ap_records[a].record.ssid[0] != '\0') {
-                        strncpy(s_client_records[i].record.probedSsid, s_ap_records[a].record.ssid, sizeof(s_client_records[0].record.probedSsid) - 1);
-                        s_client_records[i].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
-                    }
-                    if (s_ap_records[a].record.channel >= 1 && s_ap_records[a].record.channel <= 14) {
-                        s_client_records[i].record.channel = s_ap_records[a].record.channel;
-                    }
+                if (memcmp(s_ap_records[a].record.bssid, b, 6) == 0) {
+                    bestApIdx = a;
                     break;
+                }
+            }
+            // 2. Secondary fallback: check 5-byte match ONLY if candidate AP is MLO capable
+            if (bestApIdx < 0) {
+                for (uint8_t a = 0; a < s_ap_count; a++) {
+                    if (s_ap_records[a].record.mlo && memcmp(s_ap_records[a].record.bssid + 1, b + 1, 5) == 0) {
+                        bestApIdx = a;
+                        break;
+                    }
+                }
+            }
+            if (bestApIdx >= 0) {
+                if (s_client_records[i].record.probedSsid[0] == '\0' && s_ap_records[bestApIdx].record.ssid[0] != '\0') {
+                    strncpy(s_client_records[i].record.probedSsid, s_ap_records[bestApIdx].record.ssid, sizeof(s_client_records[0].record.probedSsid) - 1);
+                    s_client_records[i].record.probedSsid[sizeof(s_client_records[0].record.probedSsid) - 1] = '\0';
+                }
+                if (s_ap_records[bestApIdx].record.channel >= 1 && s_ap_records[bestApIdx].record.channel <= 14) {
+                    s_client_records[i].record.channel = s_ap_records[bestApIdx].record.channel;
                 }
             }
         }

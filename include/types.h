@@ -41,11 +41,14 @@ struct FmStationRecord {
 };
 
 struct WifiApRecord {
-    char    ssid[33];                                       // Up to 32 characters + null terminator (IEEE 802.11 standard)
-    uint8_t bssid[6];
-    uint8_t channel;
-    int8_t  rssi;
-    uint8_t authMode;                                       // WifiAuthMode (0=Open, 1=WEP, 2=WPA, 3=WPA2, 4=WPA3)
+    char     ssid[33];                                       // Up to 32 characters + null terminator (IEEE 802.11 standard)
+    uint8_t  bssid[6];
+    uint8_t  channel;
+    int8_t   rssi;
+    uint8_t  authMode;                                       // WifiAuthMode (0=Open, 1=WEP, 2=WPA, 3=WPA2, 4=WPA3)
+    uint16_t staCount;                                       // QBSS BSS Load client station count (if reported by AP)
+    uint8_t  wifiStd;                                        // Generation: 0=Legacy b/g, 4=Wi-Fi 4, 5=Wi-Fi 5, 6=Wi-Fi 6, 7=Wi-Fi 7
+    bool     mlo;                                            // Multi-Link Operation (MLO) flag
 };
 
 struct WifiClientRecord {

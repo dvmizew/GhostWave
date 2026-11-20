@@ -446,6 +446,7 @@
               <th class="py-2 px-3 font-semibold">FREQ</th>
               <th class="py-2 px-3 font-semibold">RSSI</th>
               <th class="py-2 px-3 font-semibold">SIGNAL</th>
+              <th class="py-2 px-3 font-semibold text-center">CLIENTS</th>
               <th class="py-2 px-3 font-semibold">SEEN</th>
               <th class="py-2 px-3 font-semibold">LAST SEEN</th>
               <th class="py-2 px-3 font-semibold text-center">ACTION</th>
@@ -453,7 +454,7 @@
           </thead>
           <tbody id="wifiTableBody" class="divide-y divide-[#161a24]">
             <tr>
-              <td colspan="10" class="py-8 text-center text-slate-500">
+              <td colspan="11" class="py-8 text-center text-slate-500">
                 No Wi-Fi networks detected. Connect serial to start.
               </td>
             </tr>
@@ -1468,28 +1469,38 @@
         }
 
         // Wi-Fi APs
+        let apChanged = false;
         if (Array.isArray(d.aps)) {
+          apChanged = true;
           for (const ap of d.aps) {
             if (ap.bssid && ap.bssid !== "00:00:00:00:00:00") {
               const old = discoveredAps.get(ap.bssid);
+              const rawSsid = (ap.ssid && ap.ssid.length > 0) ? ap.ssid : (old ? old.ssid : "[Hidden SSID]");
+              let wifiGen = (ap.wifi !== undefined) ? ap.wifi : (old ? old.wifiStd : 0);
+              let isMlo = (ap.mlo === true || ap.mlo === "true" || (old && old.isMlo && ap.mlo === undefined));
+              if (isMlo && wifiGen < 7) wifiGen = 7;
+
               discoveredAps.set(ap.bssid, {
-                ssid: (ap.ssid && ap.ssid.length > 0) ? ap.ssid : "[Hidden SSID]",
+                ssid: rawSsid,
                 bssid: ap.bssid,
                 ch: ap.ch,
                 freq: 2412 + (ap.ch - 1) * 5,
                 rssi: ap.rssi,
                 auth: ap.auth || "OPEN",
+                staCount: (ap.sta !== undefined) ? ap.sta : (old ? old.staCount : 0),
+                wifiStd: wifiGen,
+                isMlo: isMlo,
                 seenCount: (old ? old.seenCount : 0) + 1,
                 lastSeen: Date.now()
               });
             }
           }
-          renderWifiTable();
-          updateWifiChart();
         }
 
         // Wi-Fi Clients (Active Stations & Probes)
+        let clientChanged = false;
         if (Array.isArray(d.clients)) {
+          clientChanged = true;
           for (const c of d.clients) {
             if (c.mac && c.mac !== "00:00:00:00:00:00") {
               const old = discoveredClients.get(c.mac);
@@ -1521,7 +1532,13 @@
               });
             }
           }
+        }
+
+        // Synchronized real-time update: render tables in lockstep with updated client/AP state
+        if (apChanged || clientChanged) {
+          renderWifiTable();
           renderWifiClientTable();
+          if (apChanged) updateWifiChart();
         }
 
         // 3. BLE Telemetry
@@ -1677,20 +1694,45 @@
     }
 
     // Modal Inspector Controller ("Modale pentru retele si chestii")
+    let activeInspectedBssid = null;
+    let activeInspectedMac = null;
+
+    function getWifiGenBadge(ap) {
+      if (ap.wifiStd === 7 || ap.isMlo) {
+        if (ap.isMlo) {
+          return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-700 tracking-wide" title="Wi-Fi 7 (802.11be) Multi-Link Operation">Wi-Fi 7 MLO</span>';
+        }
+        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-700 tracking-wide" title="Wi-Fi 7 (802.11be)">Wi-Fi 7</span>';
+      } else if (ap.wifiStd === 6) {
+        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700 tracking-wide" title="Wi-Fi 6 (802.11ax)">Wi-Fi 6</span>';
+      } else if (ap.wifiStd === 5) {
+        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-700 tracking-wide" title="Wi-Fi 5 (802.11ac)">Wi-Fi 5</span>';
+      } else if (ap.wifiStd === 4) {
+        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800 tracking-wide" title="Wi-Fi 4 (802.11n)">Wi-Fi 4</span>';
+      } else {
+        return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#141824] text-slate-400 border border-[#232938]" title="Legacy 802.11b/g">Legacy</span>';
+      }
+    }
+
     function openInspectorModal() {
       const m = document.getElementById("inspectorModal");
       if (m) m.classList.remove("hidden");
     }
 
     function closeInspectorModal() {
+      activeInspectedBssid = null;
+      activeInspectedMac = null;
       const m = document.getElementById("inspectorModal");
       if (m) m.classList.add("hidden");
     }
 
-    window.openApModal = function(bssid) {
+    window.openApModal = function(bssid, showOverlay = true) {
       if (!bssid) return;
       const ap = discoveredAps.get(bssid);
       if (!ap) return;
+
+      activeInspectedBssid = bssid;
+      activeInspectedMac = null;
 
       const icon = document.getElementById("modalTypeIcon");
       if (icon) icon.className = "w-3 h-3 rounded-full bg-cyan-400 shrink-0";
@@ -1703,7 +1745,7 @@
       else if (ap.auth === "WPA") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800">WPA</span>';
       else if (ap.auth === "WEP") authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">WEP</span>';
       else authBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">OPEN</span>';
-      document.getElementById("modalBadge").innerHTML = authBadge;
+      document.getElementById("modalBadge").innerHTML = `${authBadge} ${getWifiGenBadge(ap)}`;
 
       const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
       const barColor = ap.rssi >= -65 ? "bg-emerald-400" : ap.rssi >= -78 ? "bg-amber-400" : "bg-rose-400";
@@ -1769,8 +1811,8 @@
             <div class="text-slate-400 font-bold mt-0.5">${ago === 0 ? "just now" : ago + "s ago"}</div>
           </div>
           <div class="bg-[#090c13] p-2 rounded border border-[#171d2b]">
-            <div class="text-[10px] text-slate-500 uppercase">Active Clients</div>
-            <div class="text-cyan-300 font-bold mt-0.5">${associated.length}</div>
+            <div class="text-[10px] text-slate-500 uppercase">Connected Clients</div>
+            <div class="text-cyan-300 font-bold mt-0.5">${associated.length} sniffed <span class="text-slate-400 font-normal text-xs">/ ${ap.staCount !== undefined ? ap.staCount : '0'} AP</span></div>
           </div>
         </div>
         <div class="w-full bg-[#1b202e] h-1.5 rounded overflow-hidden mt-1">
@@ -1790,13 +1832,16 @@
         </button>
       `;
 
-      openInspectorModal();
+      if (showOverlay) openInspectorModal();
     };
 
-    window.openClientModal = function(mac) {
+    window.openClientModal = function(mac, showOverlay = true) {
       if (!mac) return;
       const cli = discoveredClients.get(mac);
       if (!cli) return;
+
+      activeInspectedMac = mac;
+      activeInspectedBssid = null;
 
       const icon = document.getElementById("modalTypeIcon");
       if (icon) icon.className = "w-3 h-3 rounded-full bg-emerald-400 shrink-0";
@@ -1843,7 +1888,7 @@
         </button>
       `;
 
-      openInspectorModal();
+      if (showOverlay) openInspectorModal();
     };
 
     window.openFmStationModal = function(freq) {
@@ -2011,7 +2056,7 @@
       if (discoveredAps.size === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="10" class="py-8 text-center text-slate-500">
+            <td colspan="11" class="py-8 text-center text-slate-500">
               No Wi-Fi networks detected.
             </td>
           </tr>
@@ -2028,10 +2073,30 @@
 
       let html = '';
       for (const ap of filtered) {
-        
         const quality = Math.max(0, Math.min(100, Math.round(2 * (ap.rssi + 100))));
         const barColor = ap.rssi >= -65 ? 'bg-emerald-400' : ap.rssi >= -78 ? 'bg-amber-400' : 'bg-rose-400';
         const ago = Math.round((Date.now() - ap.lastSeen) / 1000);
+
+        // Associated / probing clients for this AP
+        const activeClients = Array.from(discoveredClients.values()).filter(c => {
+          if (c.bssid && c.bssid !== "00:00:00:00:00:00") {
+            if (c.bssid.toLowerCase() === ap.bssid.toLowerCase()) return true;
+            if (c.bssid.slice(3).toLowerCase() === ap.bssid.slice(3).toLowerCase()) return true;
+          }
+          if (ap.ssid && ap.ssid !== "[Hidden SSID]" && c.ssid === ap.ssid) return true;
+          return false;
+        });
+        const activeCount = activeClients.length;
+        const bssSta = ap.staCount || 0;
+
+        let clientsBadge = "";
+        if (activeCount > 0) {
+          clientsBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800" title="${activeCount} actively sniffed${bssSta > 0 ? ` (${bssSta} reported by AP)` : ''}">${activeCount} active${bssSta > 0 ? ` <span class="text-slate-400 font-normal text-[10px]">(${bssSta})</span>` : ''}</span>`;
+        } else if (bssSta > 0) {
+          clientsBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#141824] text-slate-400 border border-[#232938]" title="${bssSta} stations reported by router in BSS Load beacon">${bssSta} on AP</span>`;
+        } else {
+          clientsBadge = `<span class="text-slate-600 text-xs">0</span>`;
+        }
 
         let authBadge = '';
         if (ap.auth === 'WPA3') {
@@ -2051,7 +2116,10 @@
         html += `
           <tr class="${rowHighlight} transition-colors cursor-pointer" onclick="openApModal('${ap.bssid}')">
             <td class="py-2.5 px-3 font-semibold text-white">
-              <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
+              <div class="flex items-center space-x-2">
+                <span class="${ap.ssid === '[Hidden SSID]' ? 'text-slate-500 italic' : 'text-slate-100'}">${escapeHtml(ap.ssid)}</span>
+                ${getWifiGenBadge(ap)}
+              </div>
             </td>
             <td class="py-2.5 px-3 text-cyan-300 select-all">${ap.bssid}</td>
             <td class="py-2.5 px-3">${authBadge}</td>
@@ -2070,6 +2138,7 @@
                 </div>
               </div>
             </td>
+            <td class="py-2.5 px-3 text-center">${clientsBadge}</td>
             <td class="py-2.5 px-3 text-slate-400">${ap.seenCount}</td>
             <td class="py-2.5 px-3 text-slate-500">${ago === 0 ? 'just now' : ago + 's ago'}</td>
             <td class="py-2.5 px-3 text-center">
@@ -2081,6 +2150,11 @@
         `;
       }
       tbody.innerHTML = html;
+
+      // Realtime live refresh for open AP inspector modal
+      if (activeInspectedBssid && !document.getElementById("inspectorModal").classList.contains("hidden")) {
+        openApModal(activeInspectedBssid, false);
+      }
     }
 
     // Render Wi-Fi Clients Table (Probe Requests & Active Stations)
@@ -2144,6 +2218,11 @@
         `;
       }
       tbody.innerHTML = html;
+
+      // Realtime live refresh for open Client inspector modal
+      if (activeInspectedMac && !document.getElementById("inspectorModal").classList.contains("hidden")) {
+        openClientModal(activeInspectedMac, false);
+      }
     }
 
     // Render BLE Table

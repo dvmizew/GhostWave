@@ -164,11 +164,13 @@ size_t Telemetry::formatJson(const SpectrumSnapshot &snapshot, char *outBuffer, 
             cleanSsid[s] = (c >= 32 && c <= 126 && c != '"' && c != '\\') ? c : '.';
         }
         int written = snprintf(outBuffer + offset, maxLen - static_cast<size_t>(offset),
-            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\"}",
+            "%s{\"ssid\":\"%s\",\"bssid\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"ch\":%u,\"rssi\":%d,\"auth\":\"%s\",\"sta\":%u,\"wifi\":%u,\"mlo\":%s}",
             (i == 0) ? "" : ",",
             cleanSsid,
             ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
-            ap.channel, ap.rssi, getAuthModeStr(ap.authMode));
+            ap.channel, ap.rssi, getAuthModeStr(ap.authMode), ap.staCount,
+            ap.wifiStd,
+            ap.mlo ? "true" : "false");
         if (written < 0 || static_cast<size_t>(offset + written) >= maxLen) {
             break;
         }
