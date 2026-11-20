@@ -477,9 +477,8 @@
           <span class="text-white font-semibold">BLUETOOTH LE SCANNER</span>
           <span class="text-slate-500">(Active Scan · Ch 37/38/39)</span>
         </div>
-        <span id="bleTrackerBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700"></span>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mono">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center mono">
         <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433] cursor-help" title="Total unique Bluetooth LE devices seen in the last 3 minutes.">
           <div class="text-[10px] text-slate-500 uppercase tracking-wider">Total Discovered</div>
           <div id="bleTotalDevices" class="text-2xl font-bold text-purple-400 mt-0.5">0</div>
@@ -487,10 +486,6 @@
         <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433] cursor-help" title="Unique Bluetooth LE devices heard in the latest 120ms scan cycle.">
           <div class="text-[10px] text-slate-500 uppercase tracking-wider">Active (Sweep)</div>
           <div id="bleActiveCurrent" class="text-2xl font-bold text-white mt-0.5">0</div>
-        </div>
-        <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433] cursor-help" title="Detected tracking beacons such as Apple AirTag / Find My, Samsung SmartTag, or Tile.">
-          <div class="text-[10px] text-slate-500 uppercase tracking-wider">Trackers</div>
-          <div id="bleTrackerCount" class="text-2xl font-bold text-slate-400 mt-0.5">0</div>
         </div>
         <div class="bg-[#12151e] p-2.5 rounded-lg border border-[#1f2433] cursor-help" title="Strongest Bluetooth LE signal detected in the latest scan. Closer to 0 dBm means closer to the ESP32.">
           <div class="text-[10px] text-slate-500 uppercase tracking-wider">Peak RSSI</div>
@@ -518,7 +513,7 @@
         <table class="w-full text-left text-xs mono border-collapse">
           <thead>
             <tr class="text-slate-400 border-b border-[#1b1f2b] bg-[#0c0e14]">
-              <th class="py-2 px-3 font-semibold">DEVICE / FINGERPRINT</th>
+              <th class="py-2 px-3 font-semibold">DEVICE</th>
               <th class="py-2 px-3 font-semibold">MAC &amp; TYPE</th>
               <th class="py-2 px-3 font-semibold">VENDOR / SERVICE</th>
               <th class="py-2 px-3 font-semibold">SIGNAL</th>
@@ -1491,11 +1486,7 @@
             const hasMfg = (flg & 0x04) !== 0 && b.cid !== undefined;
             const cleanName = (b.name && b.name.length > 0 && b.name !== "[BLE Beacon]") ? b.name : (old ? old.name : "");
 
-            const newSvc = (b.svc && b.svc > 0) ? b.svc : 0;
-            const oldSvc = old ? old.serviceUuid : 0;
-            const mergedSvc = (newSvc > 0 && (!BLE_PRIORITY_SERVICES.has(oldSvc) || BLE_PRIORITY_SERVICES.has(newSvc)))
-              ? newSvc
-              : (oldSvc || newSvc);
+            const mergedSvc = (b.svc && b.svc > 0) ? b.svc : (old ? old.serviceUuid : 0);
 
             discoveredBles.set(b.addr, {
               name: cleanName,
@@ -1662,7 +1653,6 @@
     const bleCompanyMap = new Map();
     const bleServiceMap = new Map();
     const bleMemberMap = new Map();
-    const BLE_PRIORITY_SERVICES = new Set([0xFD5A, 0xFEED, 0xFCB2, 0xFD44, 0xFE2C, 0xFEAA, 0xFE95, 0xFCD2]);
 
     loadCachedDict(
       "gw_dict_ble_cid_v1",
@@ -1707,29 +1697,11 @@
       }
     );
 
-    const APPLE_CONTINUITY_TYPES = {
-      0x02: "iBeacon",
-      0x05: "AirDrop",
-      0x07: "AirPods / Beats",
-      0x09: "AirPlay Target",
-      0x0A: "AirPlay Source",
-      0x0C: "Handoff",
-      0x0F: "Nearby Action",
-      0x10: "Nearby Info (iPhone/Mac)",
-      0x12: "AirTag / Find My"
-    };
-    const BLE_APPEARANCE_CATS = {
-      1: "Phone", 2: "Computer", 3: "Watch", 4: "Clock", 5: "Display",
-      6: "Remote", 8: "Glasses", 9: "Tag", 10: "Keyring", 11: "Media Player",
-      15: "HID (Keyboard/Mouse)", 16: "Running Sensor", 17: "Cycling Sensor",
-      21: "Heart Rate", 33: "Audio / Headphones", 49: "Sensor"
-    };
     const BLE_ADDR_TYPES = ["Public", "Static", "RPA", "NRPA"];
 
     function fingerprintBle(b) {
       const flg = b.flags || 0;
       const cid = b.companyId;
-      const sub = b.mfgSubtype || 0;
       const svc = b.serviceUuid || 0;
       const app = b.appearance || 0;
 
@@ -1741,35 +1713,18 @@
         if (!oui.isRandom) vendor = oui.label;
       }
 
-      let subtypeLabel = "";
-      let isTracker = false;
-      if (cid === 0x004C) {
-        subtypeLabel = APPLE_CONTINUITY_TYPES[sub] || `Continuity 0x${sub.toString(16).toUpperCase().padStart(2, "0")}`;
-        if (sub === 0x12) isTracker = true;
-      } else if (cid === 0x0006) {
-        subtypeLabel = "Swift Pair / Windows CDP";
-      }
-
-      let serviceLabel = "";
       const memberOrg = svc > 0 ? bleMemberMap.get(svc) : "";
-      if (svc === 0xFD5A) { serviceLabel = "Samsung SmartTag"; isTracker = true; }
-      else if (svc === 0xFEED) { serviceLabel = "Tile Tracker"; isTracker = true; }
-      else if (svc === 0xFCB2 || svc === 0xFD44) { serviceLabel = "Apple Find My"; isTracker = true; }
-      else if (svc === 0xFE2C) { serviceLabel = "Google Fast Pair"; }
-      else if (svc === 0xFEAA) { serviceLabel = "Eddystone Beacon"; }
-      else if (svc === 0xFE95) { serviceLabel = "Xiaomi MiBeacon"; }
-      else if (svc === 0xFCD2) { serviceLabel = "BTHome Sensor"; }
-      else if (svc > 0) {
-        serviceLabel = bleServiceMap.get(svc) || memberOrg || `UUID 0x${svc.toString(16).toUpperCase().padStart(4, "0")}`;
-      }
+      const serviceLabel = svc > 0
+        ? (bleServiceMap.get(svc) || (memberOrg ? "" : `UUID 0x${svc.toString(16).toUpperCase().padStart(4, "0")}`))
+        : "";
       if (!vendor && memberOrg) vendor = memberOrg;
 
-      const appearanceLabel = app > 0 ? (BLE_APPEARANCE_CATS[app >> 6] || `0x${app.toString(16).toUpperCase().padStart(4, "0")}`) : "";
+      const appearanceLabel = app > 0 ? `0x${app.toString(16).toUpperCase().padStart(4, "0")}` : "";
 
       const isRealName = !!(b.name && b.name.length > 0);
       const displayName = isRealName
         ? b.name
-        : (subtypeLabel || serviceLabel || appearanceLabel || (vendor ? `${vendor} BLE` : "BLE Device"));
+        : (serviceLabel || "Unnamed BLE");
 
       // Calibrated path-loss distance only when AD 0x0A TX Power is genuinely advertised
       // AD 0x0A is antenna TX power; subtract ~41 dB 1m free-space loss at 2.44 GHz (n ≈ 2.5 indoor)
@@ -1783,10 +1738,8 @@
         displayName,
         isRealName,
         vendor: vendor || "--",
-        subtypeLabel,
         serviceLabel,
         appearanceLabel,
-        isTracker,
         addrTypeLabel: BLE_ADDR_TYPES[b.addrType] || "Random",
         isConnectable: (flg & 0x01) !== 0,
         isDualMode: (flg & 0x08) !== 0,
@@ -2337,12 +2290,11 @@
 
       const fp = fingerprintBle(b);
       const icon = document.getElementById("modalTypeIcon");
-      if (icon) icon.className = `w-3 h-3 rounded-full ${fp.isTracker ? 'bg-rose-400' : 'bg-purple-400'} shrink-0`;
+      if (icon) icon.className = "w-3 h-3 rounded-full bg-purple-400 shrink-0";
       document.getElementById("modalTitle").innerText = fp.displayName;
       document.getElementById("modalSubtitle").innerText = `${b.addr} · ${fp.addrTypeLabel} Address`;
 
       const badges = [];
-      if (fp.isTracker) badges.push('<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700">TRACKER</span>');
       badges.push(fp.isConnectable
         ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">Connectable</span>'
         : '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">Beacon</span>');
@@ -2355,9 +2307,10 @@
       const cidStr = (b.companyId !== null && b.companyId !== undefined)
         ? `${escapeHtml(fp.vendor)} <span class="text-slate-500 font-normal text-[10px]">(0x${b.companyId.toString(16).toUpperCase().padStart(4, '0')})</span>`
         : escapeHtml(fp.vendor);
+      const svcHex = b.serviceUuid > 0 ? `0x${b.serviceUuid.toString(16).toUpperCase().padStart(4, '0')}` : '';
       const svcStr = fp.serviceLabel
-        ? `${escapeHtml(fp.serviceLabel)} <span class="text-slate-500 font-normal text-[10px]">(0x${b.serviceUuid.toString(16).toUpperCase().padStart(4, '0')})</span>`
-        : (fp.subtypeLabel ? escapeHtml(fp.subtypeLabel) : '--');
+        ? `${escapeHtml(fp.serviceLabel)} <span class="text-slate-500 font-normal text-[10px]">(${svcHex})</span>`
+        : (svcHex ? `Member UUID ${svcHex}` : '--');
       const txpStr = (b.txPower !== null && b.txPower !== undefined)
         ? `${b.txPower} dBm${fp.estDist ? ` <span class="text-slate-400 font-normal text-[10px]">(${fp.estDist})</span>` : ''}`
         : '--';
@@ -2368,8 +2321,8 @@
             <div class="text-[10px] text-slate-500 uppercase">Manufacturer</div>
             <div class="text-white font-bold mt-0.5 text-[11px] truncate">${cidStr}</div>
           </div>
-          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Advertised 16-bit GATT Service UUID or vendor protocol subtype (e.g., Apple Continuity, SmartTag, Fast Pair).">
-            <div class="text-[10px] text-slate-500 uppercase">Service / Protocol</div>
+          <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Advertised 16-bit Bluetooth SIG GATT Service UUID or Member UUID.">
+            <div class="text-[10px] text-slate-500 uppercase">Service UUID</div>
             <div class="text-purple-300 font-bold mt-0.5 text-[11px] truncate">${svcStr}</div>
           </div>
           <div class="bg-[#090c13] p-2.5 rounded border border-[#171d2b] cursor-help" title="Received Bluetooth signal strength in dBm (closer to 0 dBm means stronger/closer).">
@@ -2540,8 +2493,6 @@
       const badge = document.getElementById('badgeBleCount');
       const totalDevsEl = document.getElementById('bleTotalDevices');
       const countEl = document.getElementById('bleTableCount');
-      const trackerCountEl = document.getElementById('bleTrackerCount');
-      const trackerBadgeEl = document.getElementById('bleTrackerBadge');
       const filter = document.getElementById('bleSearchInput').value.trim().toLowerCase();
 
       badge.innerText = discoveredBles.size;
@@ -2549,19 +2500,6 @@
       countEl.innerText = `${discoveredBles.size} devices discovered`;
 
       const enriched = Array.from(discoveredBles.values()).map(b => ({ b, fp: fingerprintBle(b) }));
-      const trackerCount = enriched.filter(x => x.fp.isTracker).length;
-      if (trackerCountEl) {
-        trackerCountEl.innerText = trackerCount;
-        trackerCountEl.className = `text-2xl font-bold mt-0.5 ${trackerCount > 0 ? 'text-rose-400' : 'text-slate-400'}`;
-      }
-      if (trackerBadgeEl) {
-        if (trackerCount > 0) {
-          trackerBadgeEl.classList.remove('hidden');
-          trackerBadgeEl.innerText = `${trackerCount} TRACKER${trackerCount > 1 ? 'S' : ''} NEARBY`;
-        } else {
-          trackerBadgeEl.classList.add('hidden');
-        }
-      }
 
       if (discoveredBles.size === 0) {
         tbody.innerHTML = `
@@ -2590,23 +2528,20 @@
         const barColor = b.rssi >= -65 ? 'bg-purple-400' : b.rssi >= -78 ? 'bg-amber-400' : 'bg-slate-500';
         const ago = Math.round((Date.now() - b.lastSeen) / 1000);
 
-        const trackerPill = fp.isTracker
-          ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-700">TRACKER</span>`
-          : '';
         const connPill = fp.isConnectable
           ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-950/70 text-emerald-300 border border-emerald-800/70">Conn</span>`
           : '';
         const addrBadgeCls = b.addrType === 0
           ? 'bg-cyan-950/70 text-cyan-300 border-cyan-800/70'
           : (b.addrType === 1 ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-amber-950/70 text-amber-300 border-amber-800/70');
-        const vendorSub = [fp.vendor !== '--' ? fp.vendor : '', fp.serviceLabel].filter(Boolean).join(' · ') || '--';
+        const extraService = (fp.serviceLabel && fp.serviceLabel !== fp.vendor && fp.serviceLabel !== fp.displayName) ? fp.serviceLabel : '';
+        const vendorSub = [fp.vendor !== '--' ? fp.vendor : '', extraService].filter(Boolean).join(' · ') || '--';
 
         html += `
           <tr class="hover:bg-[#141824] transition-colors cursor-pointer" onclick="openBleModal('${escapeHtml(b.addr)}')">
             <td class="py-2.5 px-3 font-semibold text-white">
               <div class="flex flex-wrap items-center gap-1.5">
-                <span class="${fp.isRealName ? 'text-purple-300' : 'text-slate-200'}">${escapeHtml(fp.displayName)}</span>
-                ${trackerPill}
+                <span class="${fp.isRealName ? 'text-purple-300' : (fp.displayName === 'Unnamed BLE' ? 'italic text-slate-400 font-normal' : 'text-slate-200')}">${escapeHtml(fp.displayName)}</span>
                 ${connPill}
               </div>
             </td>
