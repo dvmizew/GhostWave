@@ -76,16 +76,17 @@ static inline bool isValidUnicastMac(const uint8_t *mac) {
 }
 
 static inline void parseSsidIe(const uint8_t *data, uint8_t elen, char *outBuf) {
-    uint8_t copyLen = (elen > 32) ? 32 : elen;
+    if (elen == 0) return;
+    const size_t copyLen = (elen > 32U) ? 32U : static_cast<size_t>(elen);
     bool allZero = true;
-    for (uint8_t i = 0; i < copyLen; i++) {
+    for (size_t i = 0; i < copyLen; i++) {
         if (data[i] != 0) {
             allZero = false;
             break;
         }
     }
     if (allZero) return;
-    for (uint8_t i = 0; i < copyLen; i++) {
+    for (size_t i = 0; i < copyLen; i++) {
         char c = static_cast<char>(data[i]);
         outBuf[i] = (c >= 32 && c <= 126) ? c : '?';
     }

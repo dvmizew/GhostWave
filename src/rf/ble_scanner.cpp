@@ -207,7 +207,16 @@ void BleScanner::scan(uint32_t windowMs, uint16_t &outDevices, int8_t &outMaxRss
     portEXIT_CRITICAL(&s_ble_mux);
 
     NimBLEScan *pBLEScan = NimBLEDevice::getScan();
-    pBLEScan->getResults(windowMs, false);
+    if (pBLEScan->isScanning()) {
+        pBLEScan->stop();
+    }
+    // Non-blocking start + bounded wait (avoids NimBLEScan::getResults BLE_NPL_TIME_FOREVER deadlock under Wi-Fi coex)
+    if (pBLEScan->start(windowMs, false)) {
+        vTaskDelay(pdMS_TO_TICKS(windowMs + 25));
+        if (pBLEScan->isScanning()) {
+            pBLEScan->stop();
+        }
+    }
 
     portENTER_CRITICAL(&s_ble_mux);
     outDevices = s_discovered_count_temp;

@@ -23,6 +23,11 @@ static volatile bool         s_mute_pending   = false;
 static volatile bool         s_req_mute       = false;
 static volatile bool         s_mono_pending   = false;
 static volatile bool         s_req_mono       = false;
+static volatile bool         s_dsp_pending    = false;
+static volatile bool         s_req_soft_mute  = true;
+static volatile bool         s_req_hcc        = true;
+static volatile bool         s_req_snc        = true;
+static volatile bool         s_fm_enabled     = true;
 
 void rf_scanner_set_mode(SystemOpMode mode) {
     s_current_mode = mode;
@@ -42,6 +47,17 @@ void rf_scanner_set_mute(bool mute) {
 void rf_scanner_set_mono(bool mono) {
     s_req_mono = mono;
     s_mono_pending = true;
+}
+
+void rf_scanner_set_dsp(bool softMute, bool hcc, bool snc) {
+    s_req_soft_mute = softMute;
+    s_req_hcc = hcc;
+    s_req_snc = snc;
+    s_dsp_pending = true;
+}
+
+void rf_scanner_set_fm_enabled(bool enabled) {
+    s_fm_enabled = enabled;
 }
 
 void rf_scanner_seek(bool seekUp) {
@@ -112,6 +128,11 @@ void Task_RF_Scanner(void *param) {
             s_mono_pending = false;
         }
 
+        if (s_dsp_pending) {
+            s_tea5767.setDsp(s_req_soft_mute, s_req_hcc, s_req_snc);
+            s_dsp_pending = false;
+        }
+
         if (s_current_mode == OP_MODE_TUNER) {
             uint32_t tunerStartMs = millis();
             localSnapshot.seq = ++sequence;
@@ -139,7 +160,11 @@ void Task_RF_Scanner(void *param) {
                 }
             }
 
-            vTaskDelay(pdMS_TO_TICKS(100));
+            // 500ms I2C polling interval avoids audible clicking on TEA5767 while staying responsive to commands
+            for (int t = 0; t < 10 && s_current_mode == OP_MODE_TUNER &&
+                 !s_tune_pending && !s_seek_pending && !s_mute_pending && !s_mono_pending && !s_dsp_pending; t++) {
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
             continue;
         }
 
@@ -216,11 +241,16 @@ void Task_RF_Scanner(void *param) {
         localSnapshot.timestampMs = sweepStartMs;
         localSnapshot.opMode = OP_MODE_SWEEP;
 
-        // 1. FAST FM BROADCAST SWEEP (87.5 - 108.0 MHz, 64 Bins on Wire1)
+        // 1. FM BROADCAST SWEEP (87.5 - 108.0 MHz on Wire1; skipped without STBY when paused on Wi-Fi/BLE tabs)
         localSnapshot.stationCount = 0;
-        s_tea5767.sweep(localSnapshot.fmRssi, localSnapshot.stationList,
-                        &localSnapshot.stationCount, MAX_DISCOVERED_STATIONS);
-        localSnapshot.teaError = s_tea5767.getLastError();
+        if (s_fm_enabled) {
+            s_tea5767.sweep(localSnapshot.fmRssi, localSnapshot.stationList,
+                            &localSnapshot.stationCount, MAX_DISCOVERED_STATIONS);
+            localSnapshot.teaError = s_tea5767.getLastError();
+        } else {
+            memset(localSnapshot.fmRssi, 0, sizeof(localSnapshot.fmRssi));
+            localSnapshot.teaError = s_tea5767.getLastError();
+        }
 
         // 2. WI-FI PROMISCUOUS CHANNEL HOPPING (Channels 1 - 13, or locked single channel)
         uint8_t lockCh = s_wifi_lock_channel;
@@ -233,10 +263,10 @@ void Task_RF_Scanner(void *param) {
                                    localSnapshot.wifiDeauthPkts, localSnapshot.wifiDeauthChannel,
                                    WIFI_CHANNEL_DWELL_MS, lockCh);
 
-        // Brief delay between Wi-Fi and BLE on the shared 2.4 GHz RF transceiver
-        vTaskDelay(pdMS_TO_TICKS(5));
+        // Guard delay between Wi-Fi promiscuous and BLE active scan on the shared 2.4 GHz RF transceiver
+        vTaskDelay(pdMS_TO_TICKS(25));
 
-        // 3. PASSIVE BLE SCAN WINDOW (NimBLE-Arduino)
+        // 3. ACTIVE BLE SCAN WINDOW (NimBLE-Arduino)
         BleScanner::scan(BLE_SCAN_WINDOW_MS, localSnapshot.bleDevices, localSnapshot.bleMaxRssi,
                          localSnapshot.bleList, &localSnapshot.bleCount);
 
@@ -253,6 +283,6 @@ void Task_RF_Scanner(void *param) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(s_fm_enabled ? 5 : 25));
     }
 }

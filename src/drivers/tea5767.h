@@ -26,13 +26,14 @@ public:
                    bool softMute = true, bool hcc = true, bool snc = true);
     void      setMute(bool mute);
     void      setMono(bool mono);
+    void      setDsp(bool softMute, bool hcc, bool snc);
     bool      seek(bool seekUp, float &outFoundFreq);
 
-    FmReading readReading(float freqMHz);
+    FmReading readReading(float freqMHz, bool highSide = true, uint32_t settleUs = TEA5767_SETTLE_DELAY_US);
     FmReading readCurrentStatus();
     uint8_t   readLevel(float freqMHz);
 
-    // 64-bin sweep with peak-detection for active stations
+    // 103-bin FM sweep (87.5-108.0 MHz) with 100 kHz peak refinement & image rejection
     void sweep(uint8_t *outRssi, FmStationRecord *outStations = nullptr,
                uint8_t *outStationCount = nullptr, uint8_t maxStations = 0);
 
@@ -51,6 +52,10 @@ private:
     bool     m_softMute;
     bool     m_hcc;
     bool     m_snc;
+    uint8_t  m_sweepCursor;
+    uint8_t  m_bandRssi[GHOSTWAVE_FM_BINS];
+    uint8_t  m_bandIf[GHOSTWAVE_FM_BINS];
+    uint8_t  m_bandStereo[(GHOSTWAVE_FM_BINS + 7) / 8];
 };
 
 #endif // GHOSTWAVE_DRIVERS_TEA5767_H

@@ -65,6 +65,13 @@ static void handleSerialCommand(const char *cmd) {
     } else if (strncmp(cmd, "MONO ", 5) == 0) {
         bool m = (cmd[5] == '1');
         rf_scanner_set_mono(m);
+    } else if (strncmp(cmd, "FM_DSP ", 7) == 0 && strlen(cmd) >= 12) {
+        bool sm  = (cmd[7]  == '1');
+        bool hcc = (cmd[9]  == '1');
+        bool snc = (cmd[11] == '1');
+        rf_scanner_set_dsp(sm, hcc, snc);
+    } else if (strncmp(cmd, "FM_SCAN ", 8) == 0) {
+        rf_scanner_set_fm_enabled(cmd[8] == '1');
     } else if (strcmp(cmd, "SEEK_UP") == 0) {
         rf_scanner_seek(true);
     } else if (strcmp(cmd, "SEEK_DOWN") == 0) {
